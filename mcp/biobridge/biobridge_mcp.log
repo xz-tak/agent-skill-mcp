@@ -1,0 +1,3 @@
+2025-12-16 18:22:17,243 [BioBridge MCP pid=64647] [main] starting MCP stdio server...
+2025-12-16 18:22:17,532 [BioBridge MCP pid=64647] [s3] downloading s3://tec-rnd-sci-dev-gi2/gi2-xz/biobridge/data to /home/sagemaker-user/.biobridge_cache/tec-rnd-sci-dev-gi2/gi2-xz/biobridge/data
+2025-12-16 18:22:17,584 [BioBridge MCP pid=64647] [s3] failed to download s3://tec-rnd-sci-dev-gi2/gi2-xz/biobridge/data: An error occurred (404) when calling the HeadObject operation: Not Found
