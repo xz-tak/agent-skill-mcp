@@ -199,56 +199,6 @@ def _s3_file_exists(s3_uri: str) -> bool:
         return False
 
 
-def _download_from_s3(s3_uri: str, local_path: str) -> None:
-    """Download a file from S3 to local path.
-
-    Args:
-        s3_uri: S3 URI of the file
-        local_path: Local path to save the file
-    """
-    bucket, key = _parse_s3_uri(s3_uri)
-    s3_client = _get_s3_client()
-
-    # Create parent directories if they don't exist
-    os.makedirs(os.path.dirname(local_path), exist_ok=True)
-
-    _log(f"[s3] downloading {s3_uri} to {local_path}")
-    s3_client.download_file(bucket, key, local_path)
-    _log(f"[s3] download complete: {local_path}")
-
-
-def _get_local_cache_dir() -> str:
-    """Get local cache directory for S3 files."""
-    cache_dir = os.path.join(os.path.expanduser("~"), ".biobridge_cache")
-    os.makedirs(cache_dir, exist_ok=True)
-    return cache_dir
-
-
-def _s3_to_local_path(s3_uri: str, base_s3_uri: str) -> str:
-    """Convert S3 URI to local cache path, preserving relative structure.
-
-    Args:
-        s3_uri: Full S3 URI of the file
-        base_s3_uri: Base S3 URI (BIOBRIDGE_SRC_DIR)
-
-    Returns:
-        Local cache path
-    """
-    # Remove base URI to get relative path
-    if not s3_uri.startswith(base_s3_uri):
-        raise ValueError(f"S3 URI {s3_uri} does not start with base {base_s3_uri}")
-
-    relative_path = s3_uri[len(base_s3_uri):].lstrip("/")
-    cache_dir = _get_local_cache_dir()
-
-    # Create a unique subdirectory based on the base S3 URI
-    bucket, key_prefix = _parse_s3_uri(base_s3_uri)
-    cache_subdir = os.path.join(cache_dir, bucket, key_prefix)
-
-    local_path = os.path.join(cache_subdir, relative_path)
-    return local_path
-
-
 def _read_s3_file_object(s3_uri: str):
     """Read file from S3 and return file-like object.
 
@@ -366,7 +316,6 @@ NODES_CSV_PATH = _build_path("data", "PrimeKG", "nodes.csv")
 # Log source directory type
 if _is_s3_uri(BIOBRIDGE_SRC_DIR):
     _log(f"[init] Using S3 source directory: {BIOBRIDGE_SRC_DIR}")
-    _log(f"[init] Local cache directory: {_get_local_cache_dir()}")
 else:
     _log(f"[init] Using local source directory: {BIOBRIDGE_SRC_DIR}")
 
@@ -688,13 +637,12 @@ def _lookup_entity(
     query_name: Optional[str],
     type_hint: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Resolve an entity by normalized exact/synonym or close match (type-aware).
+    """Resolve an entity by normalized exact match, case-insensitive match, or fuzzy match (type-aware).
 
-    Optimization improvements:
-    1. Multi-stage matching: exact -> partial -> normalized -> fuzzy
-    2. Type-aware prioritization when hint provided
-    3. Cached fuzzy matching for repeated queries
-    4. Better handling of multi-word entities
+    Three-stage matching:
+    1. Exact normalized match via index (fast)
+    2. Case-insensitive exact match
+    3. Partial substring or fuzzy match
     """
     if nodes is None or not query_name:
         return None
@@ -734,10 +682,10 @@ def _lookup_entity(
             "node_index": _safe_int(r.get("node_index")),
         }
 
-    # Stage 3: Partial contains match (for multi-word entities)
+    # Stage 3: Partial substring match, then fuzzy match as fallback
+    # Try partial contains first (fast)
     contains_match = df_scan[df_scan["node_name"].astype(str).str.lower().str.contains(re.escape(query_lower), na=False)]
     if not contains_match.empty:
-        # Prefer exact substring matches
         r = contains_match.iloc[0]
         return {
             "name": str(r.get("node_name")),
@@ -745,26 +693,10 @@ def _lookup_entity(
             "node_index": _safe_int(r.get("node_index")),
         }
 
-    # Stage 4: Token-based matching (for entities with different word orders)
-    query_tokens = set(_tokens(query_name_clean))
-    if query_tokens:
-        df_scan_copy = df_scan.copy()
-        df_scan_copy["__token_overlap__"] = df_scan_copy["node_name"].apply(
-            lambda x: len(set(_tokens(str(x))) & query_tokens) if pd.notna(x) else 0
-        )
-        token_matches = df_scan_copy[df_scan_copy["__token_overlap__"] > 0].sort_values("__token_overlap__", ascending=False)
-        if not token_matches.empty:
-            r = token_matches.iloc[0]
-            return {
-                "name": str(r.get("node_name")),
-                "type": str(r.get("node_type")),
-                "node_index": _safe_int(r.get("node_index")),
-            }
-
-    # Stage 5: Fuzzy match (expensive, use cached version)
+    # Fuzzy match as last resort
     choices = df_scan["node_name"].astype(str).tolist()
     if len(choices) > 1000:
-        # For large datasets, sample for fuzzy matching to improve performance
+        # For large datasets, sample for performance
         sample_df = df_scan.sample(n=min(1000, len(df_scan)), random_state=42)
         choices = sample_df["node_name"].astype(str).tolist()
         df_scan = sample_df
@@ -1724,6 +1656,10 @@ def predict_associations(
         # ---------- Transform & retrieve ----------
         results: List[Dict[str, Any]] = []
         try:
+            # Determine if we should retrieve all results (for tail name filtering) or just topk
+            retrieve_all = override_tail_name is not None
+            retrieve_topk_param = None if retrieve_all else topk
+
             for _, rel_id in rel_pairs:
                 hrt = app.inference.transform(
                     x=head_avg_t, src_type=src_type_id, tgt_type=tgt_type_id, rel_type=int(rel_id)
@@ -1742,10 +1678,39 @@ def predict_associations(
                     tgt_emb=tgt_emb_projected,
                     tgt_idx=tail_idx_tensor,
                     df_tail=tail_pkg["df"],
-                    topk=topk,
+                    topk=retrieve_topk_param,
                 ).sort_values("cos_sim", ascending=False)
                 retrieved["relation"] = rel
-                results.extend(retrieved.drop_duplicates().to_dict(orient="records"))
+
+                # If override_tail_name is specified, filter to matching tail entities
+                if override_tail_name:
+                    # Use fuzzy/partial matching to find the specific tail
+                    tail_name_lower = override_tail_name.lower()
+                    name_col = "node_name" if "node_name" in retrieved.columns else "mondo_name"
+
+                    # Try exact match first
+                    matched = retrieved[retrieved[name_col].astype(str).str.lower() == tail_name_lower]
+
+                    # If no exact match, try partial/contains match
+                    if matched.empty:
+                        matched = retrieved[retrieved[name_col].astype(str).str.lower().str.contains(re.escape(tail_name_lower), na=False)]
+
+                    # If still no match, try normalized match
+                    if matched.empty:
+                        tail_norm = _norm(override_tail_name)
+                        matched = retrieved[retrieved[name_col].apply(
+                            lambda x: _norm(str(x)).find(tail_norm) >= 0 if pd.notna(x) else False
+                        )]
+
+                    if not matched.empty:
+                        results.extend(matched.drop_duplicates().to_dict(orient="records"))
+                        _log(f"[inference] matched tail '{override_tail_name}' -> '{matched.iloc[0][name_col]}' with pct_rank={matched.iloc[0].get('pct_rank')}")
+                    else:
+                        _log(f"[inference] no match found for tail name '{override_tail_name}'")
+                else:
+                    # No tail name specified, return topk results (no pct_rank calculated for this case)
+                    results.extend(retrieved.drop_duplicates().to_dict(orient="records"))
+
         except Exception as e:
             _log(f"[inference] failure ({sel_head_type}, {rel}, {sel_tail_type}): {e}")
             return {"error": f"Inference failure: {e}", "startup_warnings": app.init_errors}
