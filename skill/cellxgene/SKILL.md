@@ -1,6 +1,6 @@
 ---
 name: cellxgene
-description: Comprehensive toolkit for working with CELLxGENE Census single-cell RNA-seq data. Use this skill for (1) querying and downloading expression data with flexible filtering by species, tissue, cell type, disease, and other metadata, or (2) analyzing gene expression specificity and extracting cell type marker genes. This skill applies when users request Census data retrieval, marker gene analysis, specificity visualization, or cohort building from single-cell data.
+description: Comprehensive toolkit for working with CELLxGENE Census single-cell RNA-seq data. Use this skill for (1) querying and downloading expression data via CLI tools or programmatic API with flexible filtering by species, tissue, cell type, disease, and other metadata, including out-of-core processing and PyTorch integration for ML workflows, or (2) analyzing gene expression specificity and extracting cell type marker genes. This skill applies when users request Census data retrieval, marker gene analysis, specificity visualization, cohort building, or integration with analysis pipelines.
 ---
 
 # CELLxGENE Census Toolkit
@@ -12,7 +12,9 @@ Comprehensive toolkit for querying and analyzing single-cell RNA-seq data from t
 This skill provides two main capabilities:
 
 ### 1. **Query Subskill** (`query/`)
-Download and filter single-cell RNA-seq data from CELLxGENE Census:
+Download and filter single-cell RNA-seq data from CELLxGENE Census using CLI tools or programmatic API:
+- **CLI Tools**: Interactive query scripts with confirmation prompts
+- **Programmatic API**: Direct Python access for pipelines and ML workflows
 - Query with flexible filters (species, tissue, cell type, disease, sex, development stage)
 - Download expression matrices and comprehensive metadata
 - Build custom cohorts for analysis
@@ -20,6 +22,8 @@ Download and filter single-cell RNA-seq data from CELLxGENE Census:
 - **28 cell metadata fields** including quality metrics
 - **7 gene metadata fields** with Ensembl IDs and biotypes
 - Analyze gene coexpression with correlation matrices and heatmaps
+- Out-of-core processing for large-scale queries
+- PyTorch integration for machine learning
 
 ### 2. **Specificity Subskill** (`specificity/`)
 Analyze gene expression specificity and extract cell type markers:
@@ -40,6 +44,9 @@ Use this skill when users request:
 - "Build a cohort of [cell type] matching [filters]"
 - "What data is available for [tissue/cell type/disease]?"
 - "Export cells with specific metadata criteria"
+- "Integrate Census data into [analysis pipeline/ML workflow]"
+- "Process large-scale Census queries out-of-core"
+- "Train a model on Census data with PyTorch"
 
 **Marker Analysis** (→ use `specificity/` subskill):
 - "Find markers for [cell type]"
@@ -122,22 +129,35 @@ python specificity/scripts/visualize_markers.py \
 
 **Purpose**: Download expression data from CELLxGENE Census and analyze gene coexpression
 
+**Two Approaches**:
+1. **CLI Tools**: User-friendly scripts for interactive queries
+2. **Programmatic API**: Python API for pipelines, ML workflows, and large-scale processing
+
 **Key Features**:
 - Flexible filtering by species, tissue, cell type, disease, sex, development stage
 - Gene-specific queries to reduce data size
-- Interactive download with summary preview
+- Interactive download with summary preview (CLI)
+- Out-of-core processing for large queries (API)
+- PyTorch integration for machine learning (API)
 - Comprehensive metadata export (28 cell fields, 7 gene fields)
 - Quality metrics for cell filtering
 - Gene coexpression analysis with correlation matrices
 - Hierarchical clustering and heatmap visualization
 
-**Scripts**:
+**CLI Scripts**:
 - `query_cellxgene.py` - Main query and download tool
 - `inspect_metadata_fields.py` - Explore available metadata fields
 - `example_query.py` - Example usage demonstrations
 - `analyze_coexpression.py` - Gene coexpression analysis
 
-**Documentation**: See `query/SKILL.md` for detailed usage
+**Programmatic API**:
+- `cellxgene_census.open_soma()` - Context manager for Census access
+- `cellxgene_census.get_anndata()` - Load data into AnnData objects
+- `cellxgene_census.get_obs()`/`get_var()` - Metadata-only queries
+- `axis_query()` - Out-of-core processing for large queries
+- `experiment_dataloader()` - PyTorch integration
+
+**Documentation**: See `query/SKILL.md` for detailed usage of both approaches
 
 **Common Filters**:
 - `--tissue`: lung, intestine, liver, brain, blood, etc.
@@ -300,11 +320,16 @@ sc.write("intestine_epithelial_high_quality.h5ad", adata)
 
 Detailed documentation available in `references/` directory:
 
-**Query Subskill**:
+**Query Subskill - CLI Tools**:
 - `CELLXGENE_QUERY_QUICKSTART.md` - Quick reference with examples
 - `QUERY_README.md` - Comprehensive usage guide
 - `METADATA_REFERENCE.md` - Metadata field descriptions and usage
 - `METADATA_FIELDS_ACTUAL.md` - Complete field listing (28 cell + 7 gene)
+- `COEXPRESSION_ANALYSIS.md` - Gene coexpression analysis guide
+
+**Query Subskill - Programmatic API**:
+- `census_schema.md` - Census data structure, metadata fields, and filter syntax
+- `common_patterns.md` - API usage patterns, best practices, and code examples
 
 **Specificity Subskill**:
 - See `specificity/SKILL.md` for complete documentation

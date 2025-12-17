@@ -22,7 +22,11 @@ Parameters to pass
 - context (required): A concise sentence capturing the task and key entities, including useful synonyms. Example:
   "Find diseases associated with GREM1 (aka gremlin 1). Focus on inflammatory bowel disease, Crohn disease variants."
 - topk (optional): Desired number of returned results (the server may cap it globally). Reasonable default: 25.
-- override_head_name / override_head_type (optional): Set these when the user explicitly names the head (e.g., "GREM1", "gene/protein"). If the head is implied, omit and rely on context.
+- override_head_name / override_head_names / override_head_type (optional):
+  * Use override_head_name for a single head entity (e.g., "GREM1")
+  * Use override_head_names for multiple head entities as a list (e.g., ["IL11", "GREM1"]) - computes mean embedding
+  * override_head_type is required when using override_head_names
+  * If the head is implied, omit and rely on context.
 - override_tail_name / override_tail_type (optional): Use only if the user specifies an exact tail target (e.g., "Crohn disease", "disease"). Otherwise omit and let retrieval surface candidates.
 - relation_hint (optional): If the user names the relation family (e.g., "associated with", "treats", "interacts with"), pass it to narrow the relation.
 - slidewindow: Omit unless you explicitly need to override the KG default.
@@ -30,9 +34,10 @@ Parameters to pass
 - include_debug: False normally; True only for troubleshooting (adds warnings/priors).
 
 How to choose overrides
-- If the user states a specific head (e.g., “Show diseases linked to GREM1”), set override_head_name="GREM1" and override_head_type="gene/protein".
-- If the user fixes the tail (e.g., “Is GREM1 linked to Crohn disease?”), also set override_tail_name="Crohn disease" and override_tail_type="disease".
-- If the user names a relation (e.g., “associated with”), set relation_hint="associated with".
+- Single head: If the user states a specific head (e.g., "Show diseases linked to GREM1"), set override_head_name="GREM1" and override_head_type="gene/protein".
+- Multiple heads (gene signature): If the user mentions multiple genes/proteins (e.g., "IL11 and GREM1 signature"), set override_head_names=["IL11", "GREM1"] and override_head_type="gene/protein".
+- If the user fixes the tail (e.g., "Is GREM1 linked to Crohn disease?"), also set override_tail_name="Crohn disease" and override_tail_type="disease".
+- If the user names a relation (e.g., "associated with"), set relation_hint="associated with".
 - Prefer not to invent types; use the canonical types used by the KG (e.g., "gene/protein", "disease", "drug", "phenotype").
 
 How to present results
@@ -1379,6 +1384,7 @@ def predict_associations(
     context: str,
     topk: int = 25,
     override_head_name: Optional[str] = None,
+    override_head_names: Optional[List[str]] = None,
     override_head_type: Optional[str] = None,
     override_tail_name: Optional[str] = None,
     override_tail_type: Optional[str] = None,
@@ -1395,8 +1401,18 @@ def predict_associations(
         Natural-language context used to infer head/tail candidates and types.
     topk : int
         Desired number of results (overridden by TOPK_HARD_LIMIT if set).
-    override_* : Optional[str]
-        Optional explicit head/tail name/type and relation hint overrides.
+    override_head_name : Optional[str]
+        Single head entity name. Mutually exclusive with override_head_names.
+    override_head_names : Optional[List[str]]
+        Multiple head entity names for mean embedding calculation. Mutually exclusive with override_head_name.
+    override_head_type : Optional[str]
+        Head entity type (required when using override_head_names).
+    override_tail_name : Optional[str]
+        Optional explicit tail name override.
+    override_tail_type : Optional[str]
+        Optional explicit tail type override.
+    relation_hint : Optional[str]
+        Optional relation family hint.
     slidewindow : Optional[bool]
         Whether to use slidewindow variants for embeddings (default by KG name).
     include_relation_catalog : bool
@@ -1420,6 +1436,14 @@ def predict_associations(
         if data_config is None or app.inference is None:
             return {"error": "runtime not initialized", "startup_warnings": app.init_errors}
 
+        # Validate head name parameters (mutually exclusive)
+        if override_head_name and override_head_names:
+            return {"error": "Cannot specify both override_head_name and override_head_names", "startup_warnings": app.init_errors}
+
+        # If multiple heads provided, require head_type
+        if override_head_names and not override_head_type:
+            return {"error": "override_head_type is required when using override_head_names", "startup_warnings": app.init_errors}
+
         # Honor global cap if configured (keeps existing behavior)
         if TOPK_HARD_LIMIT is not None:
             topk = min(topk, TOPK_HARD_LIMIT)
@@ -1435,17 +1459,46 @@ def predict_associations(
         # ---------- OPTIMIZED: Fast-path selection when both head and tail are explicit ----------
         sel = None
         use_llm = True
+        multi_head_mode = False
 
-        # Fast path: Skip LLM if we have explicit head and tail with types
-        if override_head_name and override_head_type and override_tail_type:
+        # Fast path: Skip LLM if we have explicit head(s) and tail with types
+        if (override_head_name or override_head_names) and override_head_type and override_tail_type:
             _log("[select] fast-path: explicit head and tail types provided, attempting direct resolution")
 
             # Normalize types
             norm_head_type = _normalize_type_alias(override_head_type)
             norm_tail_type = _normalize_type_alias(override_tail_type)
 
-            # Lookup head entity
-            head_hit = _lookup_entity(app.nodes, app.name_index, override_head_name, norm_head_type)
+            # Handle single or multiple heads
+            if override_head_names:
+                # Multiple heads mode
+                multi_head_mode = True
+                head_hits = []
+                for head_name in override_head_names:
+                    hit = _lookup_entity(app.nodes, app.name_index, head_name, norm_head_type)
+                    if hit:
+                        head_hits.append(hit)
+                    else:
+                        _log(f"[select] Warning: head entity '{head_name}' not found, skipping")
+
+                if not head_hits:
+                    _log("[select] fast-path failed: no valid head entities found")
+                    head_hit = None
+                else:
+                    # Create a combined representation for multiple heads
+                    head_names = [h["name"] for h in head_hits]
+                    head_node_indices = [h.get("node_index") for h in head_hits]
+                    head_hit = {
+                        "name": ", ".join(head_names),  # Combined name for display
+                        "names": head_names,  # Individual names
+                        "type": norm_head_type,
+                        "node_index": None,  # Will compute mean embedding
+                        "node_indices": head_node_indices,  # Multiple indices for mean
+                    }
+                    _log(f"[select] fast-path: found {len(head_hits)} head entities: {head_names}")
+            else:
+                # Single head mode
+                head_hit = _lookup_entity(app.nodes, app.name_index, override_head_name, norm_head_type)
 
             if head_hit:
                 # Find valid relation for this head-tail type combination
@@ -1479,6 +1532,8 @@ def predict_associations(
                         "head_name": head_hit["name"],
                         "head_type": norm_head_type,
                         "head_node_index": head_hit.get("node_index"),
+                        "head_node_indices": head_hit.get("node_indices"),  # For multiple heads
+                        "multi_head_mode": multi_head_mode,
                         "tail_name": tail_name,
                         "tail_type": norm_tail_type,
                         "tail_node_index": tail_node_index,
@@ -1527,13 +1582,21 @@ def predict_associations(
         rel = sel["relation_family"]
         rel_low = (rel or "").lower()
         head_node_index = sel.get("head_node_index")
+        head_node_indices = sel.get("head_node_indices")  # For multiple heads
+        multi_head_mode = sel.get("multi_head_mode", False)
         tail_name = sel.get("tail_name")  # may be None
         tail_node_index = sel.get("tail_node_index")  # may be None
 
-        _log(
-            f"[select] resolved head={head_name} head_type={sel_head_type} node_index={head_node_index}; "
-            f"relation={rel}; tail_type={sel_tail_type}; tail_name={tail_name}"
-        )
+        if multi_head_mode:
+            _log(
+                f"[select] resolved {len(head_node_indices) if head_node_indices else 0} heads: {head_name}; "
+                f"head_type={sel_head_type}; relation={rel}; tail_type={sel_tail_type}; tail_name={tail_name}"
+            )
+        else:
+            _log(
+                f"[select] resolved head={head_name} head_type={sel_head_type} node_index={head_node_index}; "
+                f"relation={rel}; tail_type={sel_tail_type}; tail_name={tail_name}"
+            )
 
         # ---------- Ensure chosen combo exists; if not, select next best ----------
         combo_valid = any(
@@ -1618,10 +1681,24 @@ def predict_associations(
             _log(f"[emb] load failed: {e}")
             return {"error": f"Embeddings load failed: {e}", "startup_warnings": app.init_errors}
 
-        # Head vector(s)
-        if head_node_index is not None:
+        # Head vector(s) - handle single or multiple heads
+        head_node_indices_list = sel.get("head_node_indices")
+        is_multi_head = sel.get("multi_head_mode", False)
+
+        if is_multi_head and head_node_indices_list:
+            # Multiple heads mode: get embeddings for all heads and calculate mean
+            _log(f"[emb] multi-head mode: computing mean embedding for {len(head_node_indices_list)} entities")
+            uniq_head_idx = np.array([int(idx) for idx in head_node_indices_list if idx is not None])
+            if len(uniq_head_idx) == 0:
+                return {
+                    "error": "No valid head node indices found for multiple heads",
+                    "startup_warnings": app.init_errors,
+                }
+        elif head_node_index is not None:
+            # Single head with node_index
             uniq_head_idx = np.array([int(head_node_index)])
         else:
+            # Single head without node_index - look up by name
             head_rows = _df_best_match_by_name(head_pkg["df"], head_name)
             if head_rows.empty:
                 return {
@@ -1630,12 +1707,24 @@ def predict_associations(
                 }
             uniq_head_idx = head_rows["node_index"].unique()
 
+        # Load embeddings and compute average
         pro_node_index = np.array(head_pkg["raw"]["node_index"])
         pro_node_emb = np.array(head_pkg["raw"]["embedding"])
-        head_avg = _avg_embeddings_for_nodes(pro_node_index, pro_node_emb, uniq_head_idx)
+
+        # Get embeddings for each head entity (handles multi-sequence proteins)
+        head_embs = []
+        for idx in uniq_head_idx:
+            idx_emb = _avg_embeddings_for_nodes(pro_node_index, pro_node_emb, np.array([idx]))
+            head_embs.append(idx_emb)
+
+        # Calculate mean across all head entities
+        head_avg = np.mean(head_embs, axis=0)
         head_avg_t = torch.tensor(head_avg, dtype=torch.float32, device=device)
         if head_avg_t.ndim == 1:
             head_avg_t = head_avg_t.unsqueeze(0)
+
+        if is_multi_head:
+            _log(f"[emb] multi-head mean embedding computed from {len(head_embs)} entities, shape={head_avg_t.shape}")
 
         # ---------- IDs & projection ----------
         try:

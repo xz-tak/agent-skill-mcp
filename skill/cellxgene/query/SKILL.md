@@ -1,6 +1,6 @@
 ---
 name: cellxgene-query
-description: Query and download single-cell RNA-seq data from CELLxGENE Census with flexible filtering by species, tissue, cell type, disease, sex, development stage, and gene sets. Returns AnnData objects with expression matrices and comprehensive cell metadata. Use this for data retrieval, cohort building, and exploratory analysis of Census data.
+description: Query and download single-cell RNA-seq data from CELLxGENE Census via CLI tools or programmatic API with flexible filtering by species, tissue, cell type, disease, sex, development stage, and gene sets. CLI tools provide interactive workflows with confirmation prompts. Programmatic API enables pipeline integration, out-of-core processing for large-scale queries, and PyTorch integration for ML workflows. Returns AnnData objects with expression matrices and comprehensive cell metadata. Use this for data retrieval, cohort building, exploratory analysis, or integration with analysis pipelines.
 ---
 
 # CELLxGENE Census Query
@@ -9,22 +9,30 @@ Query and download single-cell RNA-seq data from the CELLxGENE Census database w
 
 ## Overview
 
-This subskill provides tools to:
-1. Query CELLxGENE Census database with flexible filters
-2. Download expression matrices and cell metadata
-3. Generate summary statistics before download
-4. Export data in AnnData format (.h5ad)
-5. Extract and inspect metadata fields
-6. Analyze gene coexpression patterns with correlation matrices and heatmaps
+This subskill provides both CLI tools and programmatic API access for querying CELLxGENE Census data:
+
+**CLI Tools** (User-Friendly):
+1. Interactive query and download with confirmation prompts
+2. Generate summary statistics before download
+3. Export data in AnnData format (.h5ad)
+4. Extract and inspect metadata fields
+5. Analyze gene coexpression patterns with correlation matrices and heatmaps
+
+**Programmatic API** (Developer-Focused):
+1. Direct Python API access to Census database
+2. Out-of-core processing for large-scale queries
+3. PyTorch integration for machine learning workflows
+4. Flexible filtering and iterative processing
+5. Integration with analysis pipelines
 
 **Key Features**:
 - Filter by species, tissue, cell type, disease, sex, development stage
-- Case-insensitive partial matching for flexible queries
-- Interactive download confirmation with summary preview
+- Case-insensitive partial matching (CLI) or exact filtering (API)
 - Comprehensive metadata export (28 cell fields, 7 gene fields)
 - Quality metrics for cell filtering
 - Pairwise gene correlation analysis (Pearson/Spearman)
 - Hierarchical clustering and heatmap visualization
+- Machine learning integration with PyTorch
 
 ## When to Use This Skill
 
@@ -38,6 +46,9 @@ Use this skill when users request:
 - "Analyze coexpression of [gene list]"
 - "Generate correlation matrix for [genes] in [cell type]"
 - "Show me how [genes] correlate in [condition]"
+- "Integrate Census data into [analysis pipeline/ML workflow]"
+- "Process Census data out-of-core for large queries"
+- "Train a model on Census data with PyTorch"
 
 ## Core Concepts
 
@@ -73,7 +84,44 @@ Each query produces 4 files:
 3. **`{prefix}_summary.json`** - Aggregated statistics and counts
 4. **`{prefix}_log.json`** - Query parameters and timestamps
 
-## Workflow
+## Query Approaches
+
+This subskill supports two complementary approaches for querying CELLxGENE Census:
+
+### 1. CLI Tools (User-Friendly)
+
+**Best for:**
+- Quick data retrieval and exploration
+- Interactive workflows with confirmation prompts
+- Users who prefer command-line interfaces
+- One-off queries and downloads
+
+**Tools:**
+- `query_cellxgene.py` - Interactive query and download with summary preview
+- `inspect_metadata_fields.py` - Explore available metadata fields
+- `analyze_coexpression.py` - Gene coexpression analysis
+- `example_query.py` - Example usage demonstrations
+
+**Workflow:** See "CLI Workflow" section below
+
+### 2. Programmatic API (Developer-Focused)
+
+**Best for:**
+- Integration with analysis pipelines
+- Large-scale or automated queries
+- Out-of-core processing for massive datasets
+- Machine learning workflows with PyTorch
+- Custom processing and statistics
+
+**API:**
+- `cellxgene_census.open_soma()` - Context manager for Census access
+- `cellxgene_census.get_anndata()` - Load data into AnnData objects
+- `cellxgene_census.get_obs()`/`get_var()` - Metadata-only queries
+- `axis_query()` - Out-of-core processing for large queries
+
+**Workflow:** See "Programmatic API Usage" section below
+
+## CLI Workflow
 
 ### Step 1: Query Data
 
@@ -616,19 +664,239 @@ python scripts/analyze_coexpression.py \
 **Issue**: Empty summary statistics
 **Solution**: Check that filters are correctly spelled and match available values. Use `inspect_metadata_fields.py` to see available values
 
+## Programmatic API Usage
+
+For integration with analysis pipelines, machine learning workflows, or large-scale automated queries, use the Python API directly.
+
+### Installation
+
+```bash
+pip install cellxgene-census
+
+# For ML workflows
+pip install cellxgene-census[experimental]
+```
+
+### Opening the Census
+
+Always use the context manager for proper resource cleanup:
+
+```python
+import cellxgene_census
+
+# Open latest stable version
+with cellxgene_census.open_soma() as census:
+    # Work with census data
+
+# Open specific version for reproducibility
+with cellxgene_census.open_soma(census_version="2023-07-25") as census:
+    # Work with census data
+```
+
+### Small-to-Medium Queries
+
+For queries returning < 100k cells, use `get_anndata()`:
+
+```python
+# Basic query with filters
+adata = cellxgene_census.get_anndata(
+    census=census,
+    organism="Homo sapiens",
+    obs_value_filter="cell_type == 'B cell' and tissue_general == 'lung' and is_primary_data == True",
+    obs_column_names=["assay", "disease", "sex", "donor_id"],
+)
+
+# Query specific genes
+adata = cellxgene_census.get_anndata(
+    census=census,
+    organism="Homo sapiens",
+    var_value_filter="feature_name in ['CD4', 'CD8A', 'CD19']",
+    obs_value_filter="cell_type == 'T cell' and is_primary_data == True",
+)
+```
+
+### Metadata-Only Queries
+
+Query metadata without loading expression data:
+
+```python
+# Get cell metadata
+cell_metadata = cellxgene_census.get_obs(
+    census, "homo_sapiens",
+    value_filter="tissue_general == 'brain' and is_primary_data == True",
+    column_names=["cell_type", "tissue", "disease"]
+)
+
+# Count cells by cell type
+print(cell_metadata["cell_type"].value_counts())
+
+# Get gene metadata
+gene_metadata = cellxgene_census.get_var(
+    census, "homo_sapiens",
+    value_filter="feature_name in ['CD4', 'CD8A']",
+    column_names=["feature_id", "feature_name", "feature_length"]
+)
+```
+
+### Large-Scale Queries (Out-of-Core)
+
+For queries exceeding RAM, use `axis_query()` with iterative processing:
+
+```python
+import tiledbsoma as soma
+
+# Create axis query
+query = census["census_data"]["homo_sapiens"].axis_query(
+    measurement_name="RNA",
+    obs_query=soma.AxisQuery(
+        value_filter="tissue_general == 'brain' and is_primary_data == True"
+    ),
+    var_query=soma.AxisQuery(
+        value_filter="feature_name in ['FOXP2', 'TBR1', 'SATB2']"
+    )
+)
+
+# Iterate through expression matrix in chunks
+iterator = query.X("raw").tables()
+for batch in iterator:
+    # batch is a pyarrow.Table with columns:
+    # - soma_data: expression value
+    # - soma_dim_0: cell (obs) coordinate
+    # - soma_dim_1: gene (var) coordinate
+    process_batch(batch)
+
+# Compute incremental statistics
+n_observations = 0
+sum_values = 0.0
+
+for batch in iterator:
+    values = batch["soma_data"].to_numpy()
+    n_observations += len(values)
+    sum_values += values.sum()
+
+mean_expression = sum_values / n_observations
+```
+
+### PyTorch Integration
+
+For machine learning workflows:
+
+```python
+from cellxgene_census.experimental.ml import experiment_dataloader
+
+with cellxgene_census.open_soma() as census:
+    # Create dataloader
+    dataloader = experiment_dataloader(
+        census["census_data"]["homo_sapiens"],
+        measurement_name="RNA",
+        X_name="raw",
+        obs_value_filter="tissue_general == 'liver' and is_primary_data == True",
+        obs_column_names=["cell_type"],
+        batch_size=128,
+        shuffle=True,
+    )
+
+    # Training loop
+    for epoch in range(num_epochs):
+        for batch in dataloader:
+            X = batch["X"]  # Gene expression tensor
+            labels = batch["obs"]["cell_type"]  # Cell type labels
+            # Train model...
+```
+
+### Filter Syntax
+
+The programmatic API uses Python-like filter expressions:
+
+**Comparison operators:**
+- `==`, `!=`: Equal, not equal
+- `<`, `>`, `<=`, `>=`: Numeric comparisons
+- `in`: Membership test
+
+**Logical operators:**
+- `and`, `&`: Logical AND
+- `or`, `|`: Logical OR
+
+**Examples:**
+```python
+# Single condition
+value_filter="cell_type == 'B cell'"
+
+# Multiple conditions
+value_filter="cell_type == 'B cell' and tissue_general == 'lung' and is_primary_data == True"
+
+# Using IN for multiple values
+value_filter="tissue in ['lung', 'liver', 'kidney']"
+
+# Complex condition
+value_filter="(cell_type == 'neuron' or cell_type == 'astrocyte') and disease != 'normal'"
+```
+
+### API Best Practices
+
+1. **Always filter for primary data:** Include `is_primary_data == True` to avoid duplicate cells
+2. **Specify census version:** Use `census_version` parameter for reproducibility
+3. **Use context manager:** Always use `with` statement for proper cleanup
+4. **Select only needed columns:** Minimize data transfer with `obs_column_names`
+5. **Check query size first:** Use `get_obs()` to estimate cell count before loading
+6. **Use tissue_general:** Broader groupings than `tissue` for cross-tissue analyses
+
+### Complete Example
+
+```python
+import cellxgene_census
+import scanpy as sc
+
+# Open census
+with cellxgene_census.open_soma(census_version="2023-07-25") as census:
+    # Check query size first
+    metadata = cellxgene_census.get_obs(
+        census, "homo_sapiens",
+        value_filter="cell_type == 'T cell' and tissue_general == 'lung' and is_primary_data == True",
+        column_names=["soma_joinid"]
+    )
+    print(f"Query will return {len(metadata):,} cells")
+
+    # Load data
+    adata = cellxgene_census.get_anndata(
+        census=census,
+        organism="Homo sapiens",
+        obs_value_filter="cell_type == 'T cell' and tissue_general == 'lung' and is_primary_data == True",
+        obs_column_names=["cell_type", "tissue", "disease", "sex"],
+    )
+
+# Standard scanpy analysis
+sc.pp.normalize_total(adata, target_sum=1e4)
+sc.pp.log1p(adata)
+sc.pp.highly_variable_genes(adata)
+sc.tl.pca(adata)
+sc.pp.neighbors(adata)
+sc.tl.umap(adata)
+sc.pl.umap(adata, color=["cell_type", "disease"])
+```
+
+For more detailed API patterns, see `references/common_patterns.md`.
+
 ## Reference Documentation
 
 Detailed reference documentation is available in the `references/` directory:
 
+**CLI Tools:**
 - **CELLXGENE_QUERY_QUICKSTART.md** - Quick reference with copy-paste examples
 - **QUERY_README.md** - Comprehensive usage guide with all options
 - **METADATA_REFERENCE.md** - Detailed metadata field descriptions and usage
 - **METADATA_FIELDS_ACTUAL.md** - Complete list of all 28 cell and 7 gene metadata fields
+- **COEXPRESSION_ANALYSIS.md** - Complete guide for gene coexpression analysis
+
+**Programmatic API:**
+- **census_schema.md** - Census data structure, metadata fields, and filter syntax
+- **common_patterns.md** - API usage patterns, best practices, and code examples
 
 To access these files:
 ```bash
 # Read in terminal
 cat references/CELLXGENE_QUERY_QUICKSTART.md
+cat references/census_schema.md
 
 # Or open in editor
 ```

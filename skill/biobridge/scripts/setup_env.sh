@@ -39,55 +39,51 @@ check_conda_env() {
     return 1
 }
 
-# Function to install uv
-install_uv() {
-    echo -e "${YELLOW}Installing uv (fast Python package installer)...${NC}"
-    if command -v uv &> /dev/null; then
-        echo -e "${GREEN}✓ uv is already installed${NC}"
+# Function to install pixi
+install_pixi() {
+    echo -e "${YELLOW}Installing pixi (fast cross-platform package manager)...${NC}"
+    if command -v pixi &> /dev/null; then
+        echo -e "${GREEN}✓ pixi is already installed${NC}"
         return 0
     fi
 
-    # Install uv using the official installer
-    curl -LsSf https://astral.sh/uv/install.sh | sh
+    # Install pixi using the official installer
+    curl -fsSL https://pixi.sh/install.sh | bash
 
-    # Add uv to PATH for current session
-    export PATH="$HOME/.cargo/bin:$PATH"
+    # Add pixi to PATH for current session
+    export PATH="$HOME/.pixi/bin:$PATH"
 
-    if command -v uv &> /dev/null; then
-        echo -e "${GREEN}✓ uv installed successfully${NC}"
+    if command -v pixi &> /dev/null; then
+        echo -e "${GREEN}✓ pixi installed successfully${NC}"
         return 0
     else
-        echo -e "${RED}✗ Failed to install uv${NC}"
+        echo -e "${RED}✗ Failed to install pixi${NC}"
         return 1
     fi
 }
 
-# Function to create conda environment with uv
-create_conda_env_with_uv() {
+# Function to create conda environment with pixi
+create_conda_env_with_pixi() {
     echo -e "${YELLOW}Creating conda environment: ${ENV_NAME}${NC}"
 
-    # Create conda environment with Python only
-    conda create -n "${ENV_NAME}" python="${PYTHON_VERSION}" -y
+    # Check if pixi.toml exists
+    if [ ! -f "${SKILL_DIR}/pixi.toml" ]; then
+        echo -e "${RED}✗ pixi.toml not found in ${SKILL_DIR}${NC}"
+        return 1
+    fi
 
-    echo -e "${GREEN}✓ Conda environment created${NC}"
-
-    # Activate environment and install packages with uv
-    echo -e "${YELLOW}Installing packages with uv...${NC}"
-
-    # Get the environment's Python path
-    CONDA_PREFIX=$(conda run -n "${ENV_NAME}" python -c "import sys; print(sys.prefix)")
-
-    # Use uv to install packages from pyproject.toml
     cd "${SKILL_DIR}"
-    conda run -n "${ENV_NAME}" bash -c "
-        # Ensure uv is available
-        export PATH=\"\$HOME/.cargo/bin:\$PATH\"
 
-        # Install packages using uv
-        uv pip install -e .
-    "
+    # Use pixi to create environment and install packages
+    echo -e "${YELLOW}Installing packages with pixi...${NC}"
 
-    echo -e "${GREEN}✓ Packages installed successfully${NC}"
+    # Ensure pixi is available
+    export PATH="$HOME/.pixi/bin:$PATH"
+
+    # Install using pixi (creates environment and installs all dependencies)
+    pixi install
+
+    echo -e "${GREEN}✓ Packages installed successfully with pixi${NC}"
 }
 
 # Function to create environment with pip (fallback)
@@ -132,26 +128,29 @@ main() {
     echo -e "${YELLOW}Environment '${ENV_NAME}' not found. Setting up...${NC}"
     echo ""
 
-    # Install uv
-    if install_uv; then
-        # Try to create environment with uv
-        if create_conda_env_with_uv; then
+    # Install pixi
+    if install_pixi; then
+        # Try to create environment with pixi
+        if create_conda_env_with_pixi; then
             echo ""
             echo -e "${GREEN}================================================${NC}"
             echo -e "${GREEN}✓ BioBridge environment setup complete!${NC}"
             echo -e "${GREEN}================================================${NC}"
             echo ""
-            echo "To activate the environment, run:"
+            echo "To use the environment with pixi:"
+            echo "  pixi shell"
+            echo ""
+            echo "Or to activate with conda (if environment was created):"
             echo "  conda activate ${ENV_NAME}"
             echo ""
             return 0
         else
-            echo -e "${YELLOW}uv installation failed, falling back to pip...${NC}"
+            echo -e "${YELLOW}pixi installation failed, falling back to pip...${NC}"
             create_conda_env_fallback
         fi
     else
-        # Fallback to pip if uv installation fails
-        echo -e "${YELLOW}Could not install uv, using pip instead...${NC}"
+        # Fallback to pip if pixi installation fails
+        echo -e "${YELLOW}Could not install pixi, using pip instead...${NC}"
         create_conda_env_fallback
     fi
 

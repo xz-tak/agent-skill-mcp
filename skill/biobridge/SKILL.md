@@ -11,12 +11,14 @@ This skill enables comprehensive prediction of biomedical entity associations us
 
 **Key Capabilities:**
 - Predict associations between biomedical entities (gene-disease, drug-phenotype, etc.)
+- **Gene signature analysis**: Query multiple entities simultaneously with mean embedding
 - Match user-provided entity names to knowledge graph nodes with user confirmation
 - Query with flexible parameters (head/tail entities, relation types, embeddings)
 - Calculate association scores using neural retrieval (cosine similarity, percentile rank)
 - Export results in multiple formats (CSV, JSON, Excel)
 - Generate summaries interpreting prediction findings
 - Support custom embedding models and relation types
+- **S3 and local storage**: Read data from S3 URIs or local paths
 
 ## Workflow: Environment Check Before Tasks
 
@@ -73,6 +75,11 @@ Invoke this skill when users request:
 - "Find drugs that target [PROTEIN]"
 - "Which phenotypes are linked to [DRUG]?"
 - "Predict top associations for [ENTITY]"
+
+**Gene Signature Analysis (NEW):**
+- "Find diseases associated with the IL11 and GREM1 gene signature"
+- "What pathways are enriched for genes [GENE1, GENE2, GENE3]?"
+- "Predict associations for multiple genes: TP53, BRCA1, EGFR"
 
 **Entity Matching:**
 - "Match GREM1 to knowledge graph nodes"
@@ -150,6 +157,90 @@ Shall I proceed with this mapping to predict the association score?"
 
 3. Wait for user confirmation before running predict_link.py
 
+## MCP Tool Usage (Primary Method)
+
+When the BioBridge MCP server is available, use the `mcp__biobridge_github__predict_associations` tool as the primary method for predictions. This tool provides:
+
+- Automatic entity matching with LLM assistance
+- Fast-path optimization when entities are explicit
+- Gene signature analysis with multiple head entities
+- Comprehensive validation and error handling
+
+### Single Entity Query
+
+```python
+# Example: Predict diseases for GREM1
+mcp__biobridge_github__predict_associations(
+    context="Find diseases associated with GREM1 (gremlin 1). Focus on inflammatory bowel disease, Crohn disease variants.",
+    override_head_name="GREM1",
+    override_head_type="gene/protein",
+    relation_hint="associated with",
+    topk=25
+)
+```
+
+### Gene Signature Query (NEW Feature)
+
+For gene signature analysis, use `override_head_names` to pass multiple entities:
+
+```python
+# Example: Predict diseases for IL11 + GREM1 signature
+mcp__biobridge_github__predict_associations(
+    context="Find diseases associated with IL11 and GREM1 gene signature. Focus on IBD and inflammatory conditions.",
+    override_head_names=["IL11", "GREM1"],
+    override_head_type="gene/protein",
+    tail_type="disease",
+    relation_hint="associated with",
+    topk=50
+)
+```
+
+**How gene signatures work:**
+- Computes embeddings for each entity separately
+- Calculates mean embedding across all entities
+- Uses the mean embedding for prediction
+- Useful for pathway analysis, disease mechanism studies, and multi-gene biomarkers
+
+**When to use gene signatures:**
+- User provides multiple genes/proteins (e.g., "IL11, GREM1, and TP53")
+- Analyzing gene sets or pathways
+- Comparing multi-gene biomarkers
+- Studying disease mechanisms involving multiple factors
+
+### Pair Validation Query
+
+```python
+# Example: Validate specific association
+mcp__biobridge_github__predict_associations(
+    context="Is GREM1 associated with Crohn disease?",
+    override_head_name="GREM1",
+    override_head_type="gene/protein",
+    override_tail_name="Crohn disease",
+    override_tail_type="disease",
+    relation_hint="associated with",
+    topk=1
+)
+```
+
+### MCP Tool Parameters
+
+**Required:**
+- `context` (str): Natural language description of the query
+
+**Optional:**
+- `override_head_name` (str): Single head entity name
+- `override_head_names` (list[str]): **Multiple head entities for signature analysis**
+- `override_head_type` (str): Head entity type (**required** when using `override_head_names`)
+- `override_tail_name` (str): Specific tail entity name
+- `override_tail_type` (str): Tail entity type
+- `relation_hint` (str): Relation family (e.g., "associated with", "treats")
+- `topk` (int): Number of results (default: 25, max: 100)
+- `slidewindow` (bool): Use slidewindow embeddings for proteins
+- `include_relation_catalog` (bool): Include relation IDs (default: True)
+- `include_debug` (bool): Include debug info (default: False)
+
+**Note:** `override_head_name` and `override_head_names` are mutually exclusive.
+
 ## Knowledge Graph Overview
 
 The BioBridge knowledge graph (PrimeKG) contains:
@@ -173,9 +264,9 @@ The skill automatically checks and sets up the `biobridge` conda environment whe
 
 1. Check if conda is available
 2. Check if the `biobridge` environment exists
-3. If missing, install `uv` (fast Python package installer)
+3. If missing, install `pixi` (fast cross-platform package manager)
 4. Create the environment with Python 3.11
-5. Install all required packages from `pyproject.toml`
+5. Install all required packages from `pixi.toml`
 
 **To manually set up or verify the environment:**
 
@@ -191,17 +282,17 @@ python scripts/ensure_env.py --check-only
 ```
 
 **Required dependencies** (automatically installed):
-- torch >= 2.0.0
-- numpy >= 1.24.0
-- pandas >= 2.0.0
-- scipy >= 1.10.0
-- transformers >= 4.30.0
-- openai >= 1.0.0
-- openpyxl >= 3.1.0
-- scikit-learn >= 1.3.0
-- sentencepiece >= 0.2.0
+- pytorch >= 2.9.1
+- numpy >= 2.3.5
+- pandas >= 2.3.3
+- scipy >= 1.16.3
+- transformers >= 4.57.3
+- fastmcp >= 2.13.3
+- scikit-learn >= 1.8.0
+- boto3 >= 1.42.10 (for S3 support)
+- python-dotenv (for environment configuration)
 
-All dependencies are specified in `pyproject.toml` and installed automatically.
+All dependencies are specified in `pixi.toml` and installed automatically via the pixi package manager.
 
 ### Manual Environment Activation
 
@@ -597,6 +688,54 @@ If custom paths are not specified, the skill uses these defaults:
 
 **Embeddings:**
 - Directory: `/home/sagemaker-user/biobridge/bbridge/data/slidewindow_esm2b_unimo_pubmedbert`
+
+### S3 Storage Support (NEW)
+
+The MCP server now supports reading data from Amazon S3 in addition to local paths. This enables:
+- Cloud-based data storage and sharing
+- Scalable deployment across multiple instances
+- Version control of knowledge graphs and embeddings
+
+**S3 Configuration:**
+
+Set the `BIOBRIDGE_SRC_DIR` environment variable to an S3 URI:
+
+```bash
+export BIOBRIDGE_SRC_DIR="s3://your-bucket/biobridge/"
+```
+
+**S3 Path Format:**
+- All paths support S3 URIs: `s3://bucket-name/path/to/file`
+- The server automatically detects S3 URIs and uses boto3 for access
+- Requires AWS credentials configured via environment or IAM role
+
+**Example S3 Structure:**
+```
+s3://your-bucket/biobridge/
+├── data/
+│   ├── PrimeKG/
+│   │   ├── kg.csv
+│   │   └── nodes.csv
+│   ├── embeddings/
+│   │   └── esm2b_unimo_pubmedbert/
+│   │       ├── protein.pkl
+│   │       ├── disease.pkl
+│   │       └── ...
+│   └── Processed/
+│       ├── protein.csv
+│       ├── disease.csv
+│       └── ...
+└── ckpt/
+    └── model_6layer_100epoch/
+        ├── model.bin
+        └── model_config.json
+```
+
+**Benefits:**
+- Centralized data management
+- No need to replicate large files across instances
+- Easy version control and rollback
+- Automatic failover and redundancy
 
 ### Characterizing Custom Knowledge Graphs
 
