@@ -1,6 +1,6 @@
 ---
 name: omicsoft-deg-analysis
-description: Analyze pre-computed differential gene expression statistics from Omicsoft h5ad files to investigate target gene expression patterns and signature enrichment. This skill should be used when users request to analyze bulk DEG data (log2fc, padj) from h5ad files, filter for specific diseases or studies, examine target genes or pathways with custom signatures, perform GSEA enrichment analysis with enhanced summaries including leading edge annotation, and generate interactive visualizations. It handles disease and study filtering, signature-based expression pattern analysis with user-defined gene sets, GSEA enrichment (always includes MSigDB_Hallmark_2020), provides detailed enrichment statistics (significant comparisons count, NES direction separation, input targets in leading edge), and exports results with customizable log2fc and padj thresholds.
+description: Analyze pre-computed differential gene expression statistics from Omicsoft h5ad files to investigate target gene expression patterns and signature enrichment. This skill should be used when users request to analyze bulk DEG data (log2fc, padj) from h5ad files, filter for specific diseases or studies, examine target genes or pathways with custom signatures, perform GSEA enrichment analysis with enhanced summaries including leading edge annotation, and generate interactive visualizations. It handles disease and study filtering with step-by-step validation to prevent zero-result queries, signature-based expression pattern analysis with user-defined gene sets, GSEA enrichment (always includes MSigDB_Hallmark_2020), provides detailed enrichment statistics (significant comparisons count, NES direction separation, input targets in leading edge), and exports results with customizable log2fc and padj thresholds. The skill includes a validation workflow that tests filters incrementally and provides real-time feedback on matching values and observation counts at each step.
 ---
 
 # Omicsoft DEG Analysis
@@ -14,6 +14,42 @@ Analyze pre-computed DEG statistics (log2fc and padj) to filter h5ad files for s
 **Automatic Data Cleanup**: When loading `*_deg.h5ad` files, embedded expression data in `uns` (e.g., `uns['xxx_expr']`) is automatically removed to reduce memory usage and focus on DEG analysis. See `references/anndata_schema.md` for details on the AnnData object structure.
 
 ## Workflow
+
+### Step 0: Explore H5AD Schema (Optional but Recommended)
+
+**When to use**: When users are unfamiliar with the h5ad file contents, need to discover available filter values, or want to explore metadata before analysis.
+
+Generate an interactive schema browser to help users discover available filter values:
+
+```bash
+# Generate comprehensive JSON schema
+conda run -n <env_name> python scripts/explore_h5ad_schema.py \
+  --file <path_to_h5ad_file> \
+  --output schema_report.json \
+  --format json
+
+# Create standalone HTML viewer (works without web server)
+conda run -n <env_name> python scripts/generate_schema_viewer.py \
+  --json schema_report.json \
+  --output schema_viewer.html
+```
+
+The schema viewer provides:
+- **All unique values** for every metadata column (no truncation)
+- **Demographics**: gender, ethnicity, age categories
+- **Filtering columns**: diseases (178 values), tissues (131 values), treatments, studies
+- **Interactive search** and category filtering
+- **Count and percentage** for each value
+- **Visual distributions** with progress bars
+
+Users can open `schema_viewer.html` directly in a browser to explore all available filter values before running the analysis.
+
+**Example Files**: The skill includes real example outputs for reference:
+- `references/schema_report_example.json`: Complete schema JSON from IBD/MASH/Fibro/Derm/Rheum dataset (7,604 observations × 60,071 genes) showing all 40 metadata columns with full value lists
+- `assets/schema_viewer_example.html`: Standalone interactive HTML viewer with embedded data - open directly in any browser to explore the example dataset
+- `references/schema_quickstart.md`: Quick start guide with troubleshooting and usage tips
+
+For comprehensive documentation on schema exploration tools and usage, refer to `references/schema_exploration.md`.
 
 ### Step 1: Gather User Requirements
 
@@ -68,6 +104,186 @@ Replace `<env_name>` with the user's environment name.
 
 **Note**: `s3fs` and `boto3` are required for loading files from S3 URIs. If you're only using local files, these packages are optional.
 
+### Step 2.5: Validate Filters Step-by-Step (Highly Recommended)
+
+**When to use**: Before running the full analysis, validate all filters step-by-step to ensure they produce meaningful results and avoid running a full analysis that returns 0 observations.
+
+**Why this matters**: Filter validation tests each filter incrementally (disease → tissue → studies → comparison_category, etc.) and shows:
+- Which values match your query terms
+- How many observations remain after each filter
+- Whether any filter results in 0 observations
+- Suggestions for fixing problematic filters
+
+This prevents wasting time on full analyses that fail due to incorrect filter values or overly restrictive combinations.
+
+#### Running Filter Validation
+
+```bash
+conda run -n <env_name> python scripts/validate_filters.py \
+  --file <path_to_h5ad_file> \
+  --target-name <target_name> \
+  --signatures <signature_string> \
+  [--diseases <disease_keywords>] \
+  [--tissues <tissue_keywords>] \
+  [--studies <study_names>] \
+  [--comparison-category <categories>] \
+  [--case-treatment <treatments>] \
+  [--comparison <comparison_keywords>] \
+  [--targets <target_genes>] \
+  [--lfc-threshold <value>] \
+  [--padj-threshold <value>] \
+  [--run-gsea]
+```
+
+**Example validation:**
+
+```bash
+conda run -n claude_test python scripts/validate_filters.py \
+  --file /path/to/ibd_deg.h5ad \
+  --target-name IBD_Targets \
+  --diseases "crohn's disease,ulcerative colitis,inflammatory bowel disease" \
+  --tissues "intestine,colon,rectum,ileum,sigmoid" \
+  --comparison-category "Disease vs. Normal,Responder vs. Non-Responder" \
+  --signatures "IBD_Targets:JAK1,TYK2,ITGA4,TNFRSF25,ITGB1,PCOLCE,GREM1,CDKN2D" \
+  --targets "JAK1,TYK2,ITGA4,TNFRSF25,ITGB1,PCOLCE,GREM1,CDKN2D" \
+  --lfc-threshold 0.0 \
+  --padj-threshold 0.1 \
+  --run-gsea
+```
+
+#### Understanding Validation Output
+
+The validation script shows step-by-step progress:
+
+```
+[STEP 0] Loading h5ad file...
+  ✓ Loaded: (7,604, 60,071) (obs x vars)
+  Total observations: 7,604
+
+[STEP 1] Disease Filter
+  Query: crohn's disease,ulcerative colitis,inflammatory bowel disease
+  Filter type: Substring match (case-insensitive)
+  Search terms: ["crohn's disease", "ulcerative colitis", "inflammatory bowel disease"]
+
+  ✓ Found 4 matching disease(s):
+    - crohn's disease (CD): 698 obs
+    - inflammatory bowel disease (IBD): 40 obs
+    - ulcerative colitis (UC): 692 obs
+    - primary sclerosing cholangitis (PSC);ulcerative colitis (UC): 3 obs
+
+  → Observations after disease filter: 1,433
+
+[STEP 2] Tissue Filter
+  Query: intestine,colon,rectum,ileum,sigmoid
+  Filter type: Substring match (case-insensitive)
+
+  ✓ Found 14 matching tissue(s):
+    - colon: 59 obs
+    - colonic mucosa: 209 obs
+    - ileum: 131 obs
+    - sigmoid colon: 80 obs
+    ... (10 more tissues)
+
+  → Observations after tissue filter: 647
+
+[STEP 4] Comparison Category Filter
+  Query: Disease vs. Normal,Responder vs. Non-Responder
+  Filter type: Exact match
+
+  Available comparison categories in current dataset: 8
+    - Disease vs. Normal: 35 obs
+    - Responder vs. Non-Responder: 35 obs
+    - Other Comparisons: 129 obs
+    ... (5 more categories)
+
+  ✓ Found 2 matching category(ies):
+    - Disease vs. Normal: 35 obs
+    - Responder vs. Non-Responder: 35 obs
+
+  → Observations after comparison category filter: 70
+
+FILTER VALIDATION SUMMARY
+✓ All filters validated successfully!
+  Initial observations: 7,604
+  Final observations: 70
+  Reduction: 99.1%
+
+✓ Ready to proceed with full analysis
+```
+
+#### Key Features of Validation
+
+**1. Filter Type Identification**
+- **Substring match (case-insensitive)**: Matches partial strings (diseases, tissues, comparison)
+- **Exact match**: Requires exact value (studies, comparison_category, case_treatment)
+- **Fuzzy match**: Flexible substring matching (comparison field)
+
+**2. Intermediate Results**
+- Shows observations remaining after each filter
+- Helps identify which filters are too restrictive
+- Displays matched values before applying filter
+
+**3. Zero Observation Detection**
+If any filter results in 0 observations, validation stops and provides:
+- Which filter caused the issue
+- Available values in the filtered dataset
+- Suggestions for alternative filter terms
+- Reference to schema viewer for valid values
+
+**Example failure scenario:**
+
+```
+[STEP 2] Tissue Filter
+  Query: brain
+
+  ✗ No matching tissues found in current filtered dataset!
+
+  Available tissue keywords (showing first 20):
+    - colon
+    - colonic mucosa
+    - ileum
+    - sigmoid colon
+    ...
+
+VALIDATION FAILED
+✗ Failed at filter: tissue
+
+Suggestions:
+  - No tissues match 'brain' in the disease-filtered dataset.
+  - Please check available tissues in schema viewer.
+  - Try broader tissue terms or check tissue-disease combinations.
+```
+
+#### When Validation Succeeds
+
+The script outputs the complete command to run the full analysis:
+
+```bash
+conda run -n <env_name> python scripts/deg_analysis.py \
+  --file <path> \
+  --target-name <name> \
+  --signatures <sigs> \
+  --diseases "<terms>" \
+  --tissues "<terms>" \
+  --comparison-category "<categories>" \
+  --targets "<genes>" \
+  --lfc-threshold 0.0 \
+  --padj-threshold 0.1 \
+  --run-gsea
+```
+
+Copy this command and proceed to Step 3 to run the full analysis.
+
+#### Troubleshooting Filter Issues
+
+If validation fails:
+
+1. **Check available values**: Run schema exploration (Step 0) to see all valid values
+2. **Use broader terms**: Try more general keywords (e.g., "colitis" instead of "ulcerative colitis (UC)")
+3. **Remove restrictive filters**: Some filter combinations may not exist (e.g., specific study + specific tissue)
+4. **Verify exact matches**: Comparison categories require exact matches - check schema for precise category names
+5. **Check tissue-disease combinations**: Not all diseases have data for all tissues
+
 ### Step 3: Execute Analysis Script
 
 Run the analysis script `scripts/deg_analysis.py` with the collected parameters:
@@ -112,8 +328,9 @@ The analysis generates multiple output files in the specified output directory:
    - Columns: study, tissue, disease, disease_category
 
 2. **signature_summary.csv**: Target gene expression patterns for signatures
-   - Shows which genes are up/down-regulated per tissue and disease
-   - Columns: Gene, tissue, disease_category, sig (up/dn), count, study, total_count, threshold
+   - Shows which genes are up/down-regulated per tissue, disease, and comparison category
+   - Grouped by: Gene, tissue, disease_category, comparison_category, sig (up/dn)
+   - Columns: Gene, tissue, disease_category, comparison_category, sig (up/dn), count, study, total_count, threshold
 
 3. **target_signature_YYYYMMDD.html**: Interactive scatter plot of gene expression
    - Shows log2fc for each gene across studies
@@ -130,19 +347,25 @@ The analysis generates multiple output files in the specified output directory:
    - Asterisks (*) mark significant genes (padj < threshold)
    - Dropdown menu to switch between signatures (includes target genes if provided)
 
-5. **gsea_all_results.csv**: Complete GSEA enrichment results (if --run-gsea used)
+5. **detailed_gene_table.csv**: Comprehensive gene-level data export
+   - Long-format table with all metadata for signature and target genes
+   - Each row represents one gene in one comparison
+   - Contains all columns: log2fc, padj, tissue, disease, comparison, study, etc.
+   - Useful for custom downstream analysis and filtering
+
+6. **gsea_all_results.csv**: Complete GSEA enrichment results (if --run-gsea used)
    - All signature enrichment results across studies
    - Includes both custom signatures and MSigDB_Hallmark_2020
-
-6. **gsea_summary.csv**: Top enriched signatures (if --run-gsea used)
-   - Signatures ranked by number of studies showing enrichment
+   - Contains comparison_category for tracking enrichment context
 
 7. **gsea_enhanced_summary.csv**: Enhanced GSEA summary with detailed statistics (if --run-gsea used)
-   - Number of significant comparisons (FDR < threshold) out of total comparisons
+   - **Groupby format**: Each Term has separate rows for each Comparison_Category
+   - Allows comparison of enrichment patterns between "Disease vs. Normal" and "Responder vs. Non-Responder"
+   - Number of significant comparisons (FDR < threshold) per term-category combination
    - Studies with positive NES (upregulated) and their NES values
    - Studies with negative NES (downregulated) and their NES values
    - Input target genes found in leading edge (tracks only --targets genes if provided, otherwise all signature genes)
-   - Columns include: Term, N_Significant_Comparisons, Total_Comparisons, Percent_Significant, N_Positive_NES, N_Negative_NES, Positive_NES_Studies, Negative_NES_Studies, Input_Targets_In_Leading_Edge, N_Input_Targets_In_LE
+   - Columns include: Term, Comparison_Category, N_Significant_Comparisons, Total_Comparisons, Percent_Significant, N_Positive_NES, N_Negative_NES, Positive_NES_Studies, Negative_NES_Studies, Input_Targets_In_Leading_Edge, N_Input_Targets_In_LE
    - Note: Target genes (--targets) are plotted but NOT included in GSEA enrichment analysis
 
 8. **gsea_score_pathway_YYYYMMDD.html**: GSEA visualization (if --run-gsea used)
@@ -160,9 +383,10 @@ After analysis completes, provide the user with:
 
 2. **Key findings**:
    - Which signature genes show significant differential expression
-   - Tissue and disease expression patterns
+   - Tissue, disease, and comparison category expression patterns
    - Top enriched signatures (if GSEA was run)
-   - Enrichment statistics: number of significant comparisons, NES direction, and input targets in leading edge
+   - Enrichment statistics by comparison category: number of significant comparisons, NES direction, and input targets in leading edge
+   - Patterns across "Disease vs. Normal" and "Responder vs. Non-Responder" comparisons
 
 3. **Output file locations**:
    - List all generated files with brief descriptions
@@ -390,8 +614,17 @@ conda run -n env_name python scripts/deg_analysis.py \
 ## Resources
 
 ### scripts/
-Contains the main analysis script `deg_analysis.py` for analyzing pre-computed DEG statistics with customizable parameters.
+- `deg_analysis.py`: Main analysis script for analyzing pre-computed DEG statistics with customizable filtering, signature analysis, and GSEA enrichment
+- `validate_filters.py`: Step-by-step filter validation tool that tests each filter incrementally, shows matching values and observation counts at each step, detects zero-result queries, and provides suggestions for fixing problematic filters before running full analysis
+- `explore_h5ad_schema.py`: Schema exploration tool that generates comprehensive JSON or text reports of all metadata columns and values in h5ad files
+- `generate_schema_viewer.py`: Generates standalone HTML viewers with embedded schema data for easy exploration without web servers
 
 ### references/
 - `signature_format.md`: Detailed guidance on gene symbol formatting and signature creation for different organisms
 - `anndata_schema.md`: Complete documentation of AnnData object structure, including DEG and expression data schemas, metadata columns, layer descriptions, and automatic cleanup behavior
+- `schema_exploration.md`: Comprehensive guide to using schema exploration tools, understanding the generated reports, and finding filter values for analysis
+- `schema_report_example.json`: Real example schema JSON (3.6 MB) from IBD/MASH/Fibro/Derm/Rheum dataset showing complete metadata structure
+- `schema_quickstart.md`: Quick start guide for schema exploration with troubleshooting tips
+
+### assets/
+- `schema_viewer_example.html`: Standalone interactive HTML viewer (2.4 MB) with embedded example dataset - open directly in browser to see schema exploration in action

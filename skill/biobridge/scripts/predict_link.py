@@ -111,7 +111,7 @@ def build_context(
     return " ".join(parts)
 
 
-def print_resolved_mapping(result: Dict[str, Any]) -> None:
+def print_resolved_mapping(result: Dict[str, Any], topk: int) -> None:
     """Print the resolved entity mapping for user confirmation."""
     resolved = result.get("resolved", {})
 
@@ -136,9 +136,16 @@ def print_resolved_mapping(result: Dict[str, Any]) -> None:
     if chosen_rels:
         print(f"  Relation IDs: {[r.get('id') for r in chosen_rels]}")
 
-    print(f"\n**LLM Used:** {resolved.get('llm_used', False)}")
+    print(f"\n**Query Parameters:**")
+    print(f"  Top results to retrieve (topk): {topk}")
 
-    print("\n" + "="*60 + "\n")
+    print(f"\n**LLM Used for matching:** {resolved.get('llm_used', False)}")
+
+    print("\n" + "="*60)
+    print("Does this look correct? Reply 'yes' to proceed, or:")
+    print("- Tell me how to adjust the mapping")
+    print("- Specify a different topk value (e.g., 'use topk 50')")
+    print("="*60 + "\n")
 
 
 def deduplicate_results(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -318,6 +325,21 @@ Examples:
 
     args = parser.parse_args()
 
+    # Display query parameters
+    print("\n" + "="*60)
+    print("BIOBRIDGE LINK PREDICTION")
+    print("="*60)
+    print(f"\nQuery Parameters:")
+    print(f"  Head Entity: {args.head}")
+    print(f"  Head Type: {args.head_type}")
+    if args.tail:
+        print(f"  Tail Entity: {args.tail}")
+    print(f"  Tail Type: {args.tail_type}")
+    if args.relation:
+        print(f"  Relation: {args.relation}")
+    print(f"  Top results (topk): {args.topk}")
+    print("="*60 + "\n")
+
     # Set custom paths if provided
     if any([args.kg_path, args.nodes_path, args.model_ckpt, args.embedding_dir]):
         print("Setting custom paths...", file=sys.stderr)
@@ -376,11 +398,32 @@ Examples:
 
         # Check for errors
         if "error" in result:
-            print(f"Error: {result['error']}", file=sys.stderr)
+            error_msg = result['error']
+            print(f"\n{'='*60}", file=sys.stderr)
+            print(f"ERROR: {error_msg}", file=sys.stderr)
+            print(f"{'='*60}\n", file=sys.stderr)
+
+            # Provide helpful guidance based on error type
+            if "not found" in error_msg.lower() or "no match" in error_msg.lower():
+                print("The entity was not found in the knowledge graph.", file=sys.stderr)
+                print("\nSuggested actions:", file=sys.stderr)
+                print("1. Try using match_entity.py to find similar entities:", file=sys.stderr)
+                print(f"   conda run -n biobridge python scripts/match_entity.py \"{args.head}\" --type \"{args.head_type}\" --show-details", file=sys.stderr)
+                print("\n2. Check for alternative names or synonyms", file=sys.stderr)
+                print("3. Verify the entity type is correct", file=sys.stderr)
+            elif "relation" in error_msg.lower() or "incompatible" in error_msg.lower():
+                print("The specified relation may not be compatible with these entity types.", file=sys.stderr)
+                print("\nSuggested actions:", file=sys.stderr)
+                print("1. Try removing the --relation flag to let the system auto-select", file=sys.stderr)
+                print("2. Use a different relation type (e.g., 'associated with', 'interacts with')", file=sys.stderr)
+                print("3. Check the valid relation combinations in the knowledge graph", file=sys.stderr)
+            else:
+                print("\nFor more information, run with --debug flag", file=sys.stderr)
+
             sys.exit(1)
 
         # Print resolved mapping for user confirmation
-        print_resolved_mapping(result)
+        print_resolved_mapping(result, args.topk)
 
         # Print results
         display_topk = None if args.show_all else 20

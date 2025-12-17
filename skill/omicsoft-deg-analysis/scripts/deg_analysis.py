@@ -126,7 +126,9 @@ def load_h5ad(file_path):
         print("Loading h5ad file directly from S3...")
         try:
             import s3fs
-            adata = sc.read_h5ad(file_path)
+            fs = s3fs.S3FileSystem()
+            with fs.open(file_path, 'rb') as f:
+                adata = sc.read_h5ad(f)
             print("✓ Successfully loaded from S3")
         except ImportError:
             raise ImportError(
@@ -363,19 +365,34 @@ def create_enhanced_gsea_summary(res_deg_score, signature_set, target_genes=None
             genes_to_track.update(genes)
         print(f"Tracking {len(genes_to_track)} signature genes in leading edge")
 
-    # Process each term
+    # Process each term and comparison_category combination
     summary_rows = []
 
-    for term in res_deg_score['Term'].unique():
-        term_df = res_deg_score[res_deg_score['Term'] == term].copy()
+    # Check if comparison_category is available
+    has_comparison_category = 'comparison_category' in res_deg_score.columns
+
+    if has_comparison_category:
+        # Group by both Term and comparison_category
+        groupby_keys = ['Term', 'comparison_category']
+    else:
+        # Group by Term only
+        groupby_keys = ['Term']
+
+    for group_key, group_df in res_deg_score.groupby(groupby_keys):
+        # Extract term and category
+        if has_comparison_category:
+            term, comparison_category = group_key
+        else:
+            term = group_key
+            comparison_category = 'All'
 
         # Filter for significant results
-        sig_df = term_df[term_df['FDR q-val'] < fdr_threshold]
+        sig_df = group_df[group_df['FDR q-val'] < fdr_threshold]
 
         if len(sig_df) == 0:
             continue
 
-        # Count significant comparisons
+        # Count significant comparisons for this term-category combination
         n_significant = len(sig_df)
 
         # Separate by NES direction
@@ -412,6 +429,7 @@ def create_enhanced_gsea_summary(res_deg_score, signature_set, target_genes=None
         # Create summary row
         summary_row = {
             'Term': term,
+            'Comparison_Category': comparison_category,
             'N_Significant_Comparisons': n_significant,
             'Total_Comparisons': total_comparisons,
             'Percent_Significant': f"{(n_significant/total_comparisons*100):.1f}%",
@@ -429,8 +447,11 @@ def create_enhanced_gsea_summary(res_deg_score, signature_set, target_genes=None
     summary_df = pd.DataFrame(summary_rows)
 
     if len(summary_df) > 0:
-        # Sort by number of significant comparisons
-        summary_df = summary_df.sort_values('N_Significant_Comparisons', ascending=False)
+        # Sort by term and comparison category
+        if has_comparison_category:
+            summary_df = summary_df.sort_values(['N_Significant_Comparisons', 'Term', 'Comparison_Category'], ascending=[False, True, True])
+        else:
+            summary_df = summary_df.sort_values('N_Significant_Comparisons', ascending=False)
 
         # Save to file
         output_path = f"{output_dir}/{output_filename}"
@@ -439,10 +460,18 @@ def create_enhanced_gsea_summary(res_deg_score, signature_set, target_genes=None
 
         # Print summary statistics
         print(f"\nGSEA Summary Statistics:")
-        print(f"  Terms with FDR < {fdr_threshold}: {len(summary_df)}")
+        if has_comparison_category:
+            print(f"  Unique terms with FDR < {fdr_threshold}: {summary_df['Term'].nunique()}")
+            print(f"  Term-Category combinations: {len(summary_df)}")
+        else:
+            print(f"  Terms with FDR < {fdr_threshold}: {len(summary_df)}")
         print(f"  Total comparisons: {total_comparisons}")
-        print(f"\nTop 10 enriched terms by number of significant comparisons:")
-        print(summary_df[['Term', 'N_Significant_Comparisons', 'N_Positive_NES', 'N_Negative_NES', 'N_Input_Targets_In_LE']].head(10).to_string(index=False))
+        print(f"\nTop 10 enriched term-category combinations by number of significant comparisons:")
+
+        # Select columns to display
+        display_cols = ['Term', 'Comparison_Category', 'N_Significant_Comparisons', 'N_Positive_NES', 'N_Negative_NES', 'N_Input_Targets_In_LE']
+
+        print(summary_df[display_cols].head(10).to_string(index=False))
     else:
         print(f"No terms with FDR < {fdr_threshold} found")
 
@@ -790,10 +819,10 @@ def run_analysis(args):
                 (x['log2fc'] > args.lfc_threshold) & (x['padj'] < args.padj_threshold), 'up',
                 np.where((x['log2fc'] < -args.lfc_threshold) & (x['padj'] < args.padj_threshold), 'dn', 'na')
             ))
-            .groupby(['Gene', 'tissue', 'disease_category', 'sig'])
+            .groupby(['Gene', 'tissue', 'disease_category', 'comparison_category', 'sig'])
             .agg(count=('Gene', 'size'), study=('study', list))
             .reset_index()
-            .assign(total_count=lambda df: df.groupby(['Gene', 'tissue', 'disease_category'])['count'].transform('sum'))
+            .assign(total_count=lambda df: df.groupby(['Gene', 'tissue', 'disease_category', 'comparison_category'])['count'].transform('sum'))
             .assign(threshold=f'|lfc|>{args.lfc_threshold};padj<{args.padj_threshold}')
             .query('count != 0 and sig != "na"')
         )
@@ -801,10 +830,18 @@ def run_analysis(args):
         if len(sub_df) > 0:
             sub_df.to_csv(f'{output_dir}/signature_summary.csv', index=False)
             print(f"Saved signature summary to {output_dir}/signature_summary.csv")
-            print(f"\nSignature hits across diseases:")
-            print(sub_df.groupby(['disease_category', 'tissue', 'sig'])['Gene'].count())
+            print(f"\nSignature hits across diseases and comparison categories:")
+            print(sub_df.groupby(['disease_category', 'comparison_category', 'tissue', 'sig'])['Gene'].count())
         else:
             print("No significant genes found in signature analysis")
+
+        # Export detailed long table for signature/target genes
+        print(f"\nExporting detailed long table for signature/target genes...")
+        detailed_long_df = long_df_comp[long_df_comp['Gene'].isin(all_genes)].copy()
+        detailed_long_df.to_csv(f'{output_dir}/detailed_gene_table.csv', index=False)
+        print(f"Saved detailed gene table to {output_dir}/detailed_gene_table.csv")
+        print(f"  Shape: {detailed_long_df.shape} (rows x columns)")
+        print(f"  Genes included: {detailed_long_df['Gene'].nunique()}")
 
     # GSEA Analysis
     if args.run_gsea:
@@ -823,8 +860,9 @@ def run_analysis(args):
 
         print(f"GSEA will run with MSigDB_Hallmark_2020 (default) and {len(signature_set_for_gsea)} custom signature(s)")
 
-        for c, df in tqdm(enrich_df.groupby(['study','comparsion']), desc="Running GSEA"):
-            study_comp = ':'.join(c)
+        for c, df in tqdm(enrich_df.groupby(['study','comparison','comparison_category']), desc="Running GSEA"):
+            study_comp = ':'.join(c[:2])  # study:comparison
+            comp_category = c[2]  # comparison_category
             try:
                 # Run GSEA on custom signatures if provided (excluding targets)
                 if signature_set_for_gsea:
@@ -838,9 +876,9 @@ def run_analysis(args):
                         seed=42,
                         outdir=None
                     )
-                    res_deg_enr_df = res_deg_enr.res2d.assign(study=study_comp)
+                    res_deg_enr_df = res_deg_enr.res2d.assign(study=study_comp, comparison_category=comp_category)
                     res_deg_list.append(res_deg_enr_df)
-    
+
                 # Always run GSEA on MSigDB_Hallmark_2020
                 res_deg = gp.prerank(
                     rnk=df['sig_score'][df['sig_score'] != 0].sort_values(ascending=False),
@@ -852,7 +890,7 @@ def run_analysis(args):
                     seed=42,
                     outdir=None
                 )
-                res_deg_df = res_deg.res2d.assign(study=study_comp)
+                res_deg_df = res_deg.res2d.assign(study=study_comp, comparison_category=comp_category)
                 res_deg_list.append(res_deg_df)
             except:
                 print(f'skip {study_comp}')
@@ -861,18 +899,6 @@ def run_analysis(args):
             res_deg_score = pd.concat(res_deg_list)
             res_deg_score.to_csv(f'{output_dir}/gsea_all_results.csv', index=False)
             print(f"Saved GSEA results to {output_dir}/gsea_all_results.csv")
-
-            # Summarize GSEA results
-            gsea_summary = (
-                res_deg_score[(res_deg_score['NOM p-val'] < 0.05) & (res_deg_score['NES'] > 0)]
-                .groupby('Term')['study']
-                .size()
-                .sort_values(ascending=False)
-                .to_frame()
-            )
-            gsea_summary.to_csv(f'{output_dir}/gsea_summary.csv')
-            print(f"\nTop GSEA pathways:")
-            print(gsea_summary.head(20))
 
             # Create enhanced GSEA summary with leading edge annotation
             enhanced_summary_df = create_enhanced_gsea_summary(

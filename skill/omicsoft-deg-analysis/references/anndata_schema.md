@@ -90,3 +90,23 @@ When loading `*_deg.h5ad` files, the `load_h5ad()` function:
 - **Mouse**: Title case (e.g., `Cgas`, `Tmem173`, `Tbk1`)
 
 See `signature_format.md` for detailed gene symbol guidelines.
+
+## Exploring H5AD Schema
+
+To discover available metadata values before running analysis, use the schema exploration tools:
+
+```bash
+# Generate comprehensive schema report
+python scripts/explore_h5ad_schema.py --file data.h5ad --output schema.json --format json
+
+# Create interactive HTML viewer
+python scripts/generate_schema_viewer.py --json schema.json --output viewer.html
+```
+
+The schema exploration tools help identify:
+- Available diseases, tissues, treatments for filtering
+- Demographics (gender, ethnicity, age) when present
+- Study identifiers and comparison types
+- All unique values for every metadata column
+
+See `schema_exploration.md` for complete documentation on using these tools.

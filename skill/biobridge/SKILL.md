@@ -107,31 +107,75 @@ Invoke this skill when users request:
 conda run -n biobridge python scripts/match_entity.py [ENTITY_NAME] --type [TYPE]
 ```
 
-**Step 2: Present mappings to user**
+**Step 2: Handle unmapped or ambiguous entities**
+
+If entities or relations are **not found or not mapped** in the knowledge graph:
+
+**2a. Entity Not Found:**
+- Run match_entity.py to search for similar entities
+- Present the best matching alternatives to the user
+- Ask the user to select the correct entity or provide a more precise name
+
+Example response:
+```
+The entity 'GREMLIN1' was not found in the knowledge graph.
+
+Did you mean one of these?
+1. GREM1 (gene/protein, node_index: 45678)
+   Aliases: gremlin 1, DRM, IHG-2, CKTSF1B1
+2. GREM2 (gene/protein, node_index: 45679)
+   Aliases: gremlin 2, PRDC
+
+Which entity did you mean? Please reply with the number or provide a more precise entity name.
+```
+
+**2b. Relation Not Valid:**
+- Inform the user that the specified relation is not compatible with the entity types
+- Suggest valid alternative relations
+- Ask the user to select an appropriate relation
+
+Example response:
+```
+The relation 'treats' is not valid for gene/protein → disease associations.
+
+Valid relations for this entity type combination:
+- associated with
+- regulates
+- participates in
+
+Which relation would you like to use?
+```
+
+**Step 3: Present confirmed mappings to user**
 Show the user:
 - Matched head entity: name, type, node_index, aliases
 - Matched tail entity (if specified): name, type, node_index, aliases
 - Selected relation: relation family, compatible with these types
+- **Initial topk value** (default: 25)
 - Any warnings: ambiguous matches, multiple candidates
 
-**Step 3: Get user confirmation**
+**Step 4: Get user confirmation and topk preference**
 Ask the user explicitly:
 "I've mapped your query as follows:
 - Head: [ENTITY_NAME] (type: [TYPE], node_index: [INDEX])
 - Tail: [ENTITY_NAME] (type: [TYPE], node_index: [INDEX])
 - Relation: [RELATION]
+- Top results to retrieve: [TOPK] (default: 25)
 
-Does this look correct? Reply 'yes' to proceed, or tell me how to adjust the mapping."
+Does this look correct? Reply 'yes' to proceed, or:
+- Tell me how to adjust the mapping
+- Specify a different topk value (e.g., 'use topk 50')
+"
 
-**Step 4a: If user confirms → proceed with prediction**
+**Step 5a: If user confirms → proceed with prediction**
 ```bash
-conda run -n biobridge python scripts/predict_link.py [confirmed parameters]
+conda run -n biobridge python scripts/predict_link.py [confirmed parameters] --topk [USER_TOPK]
 ```
 
-**Step 4b: If user disagrees → remap based on feedback**
+**Step 5b: If user disagrees → remap based on feedback**
 - Ask clarifying questions about which entity/relation to use
 - Run match_entity.py again with adjusted parameters
-- Return to Step 2 with new mappings
+- Return to Step 3 with new mappings
 
 ### Example Confirmation Workflow
 
@@ -505,9 +549,14 @@ I've mapped your entities to the knowledge graph:
 **Relation:**
 - associated with (gene/protein → disease)
 
+**Query Parameters:**
+- Top results to retrieve (topk): 25 (default)
+
 This mapping will query: "IL11 → associated with → Crohn disease"
 
-Does this look correct? Reply 'yes' to proceed or tell me how to adjust.
+Does this look correct? Reply 'yes' to proceed, or:
+- Tell me how to adjust the mapping
+- Specify a different topk value (e.g., 'use topk 50')
 ```
 
 ## Export and Summarization
@@ -771,6 +820,32 @@ Use this information to:
 
 **Symptom:** "Entity not found in knowledge graph"
 
+**Claude's Action:**
+1. Run match_entity.py with fuzzy matching to find similar entities
+2. Present top 3-5 best matches to the user with full details (name, type, node_index, aliases)
+3. Ask the user to:
+   - Select one of the suggested matches (by number)
+   - Provide a more precise entity name
+   - Confirm if they want to try a different entity type
+
+**Example Claude Response:**
+```
+I couldn't find an exact match for 'GREMLIN1' in the knowledge graph.
+
+Here are the closest matches I found:
+1. GREM1 (gene/protein, node_index: 45678)
+   Aliases: gremlin 1, DRM, IHG-2, CKTSF1B1
+2. GREM2 (gene/protein, node_index: 45679)
+   Aliases: gremlin 2, PRDC
+3. GREM3 (gene/protein, node_index: 45680)
+   Aliases: gremlin 3
+
+Which entity did you mean? Please:
+- Reply with the number (e.g., '1' for GREM1)
+- Provide a more precise entity name
+- Let me know if you want to search with different criteria
+```
+
 **Solutions:**
 1. Try alternative names/synonyms (e.g., "CDKN1A" vs "P21")
 2. Check entity type is correct (gene/protein vs drug)
@@ -805,6 +880,27 @@ Claude: "Got it, using IL11 (node_index: 12345). Proceeding with prediction..."
 
 **Symptom:** Prediction returns empty or error about invalid combination
 
+**Claude's Action:**
+1. Detect the incompatible combination from MCP error response
+2. Look up valid relations for the specified entity type pair
+3. Present the valid alternatives to the user
+4. Ask the user to select an appropriate relation or let the system auto-select
+
+**Example Claude Response:**
+```
+The relation 'treats' is not compatible with the entity types gene/protein → disease.
+
+Valid relations for this combination:
+1. associated with (most common for gene-disease links)
+2. regulates (for regulatory relationships)
+3. participates in (for pathway involvement)
+
+Would you like to:
+- Use 'associated with' (recommended for general associations)
+- Select a different relation from the list above
+- Let the system automatically select the best relation
+```
+
 **Solutions:**
 1. Check if the entity types support the specified relation
 2. Try removing --relation flag (let system auto-select)
@@ -814,15 +910,18 @@ Claude: "Got it, using IL11 (node_index: 12345). Proceeding with prediction..."
 ## Key Principles
 
 1. **ALWAYS match entities first and get user confirmation** before prediction
-2. **Present mappings clearly** with entity names, types, node indices, and aliases
-3. **Wait for user agreement** before proceeding with predict_link.py
-4. **Remap on disagreement** - don't assume the first match is correct
-5. **Provide entity types explicitly** for better matching accuracy
-6. **Use context when available** to disambiguate entity names
-7. **Interpret scores in context** - compare to baseline/other entities
-8. **Export results for analysis** - scores alone don't tell the full story
-9. **Generate summaries for presentations** - raw predictions need interpretation
-10. **Validate important findings** - high scores warrant literature verification
+2. **Handle unmapped entities proactively** - search for similar entities and present alternatives
+3. **Validate relation compatibility** - check entity-relation combinations and suggest valid alternatives
+4. **Display topk parameter** - always show the default topk (25) and offer customization
+5. **Present mappings clearly** with entity names, types, node indices, and aliases
+6. **Wait for user agreement** before proceeding with predict_link.py
+7. **Remap on disagreement** - don't assume the first match is correct
+8. **Provide entity types explicitly** for better matching accuracy
+9. **Use context when available** to disambiguate entity names
+10. **Interpret scores in context** - compare to baseline/other entities
+11. **Export results for analysis** - scores alone don't tell the full story
+12. **Generate summaries for presentations** - raw predictions need interpretation
+13. **Validate important findings** - high scores warrant literature verification
 
 ## Resources
 
