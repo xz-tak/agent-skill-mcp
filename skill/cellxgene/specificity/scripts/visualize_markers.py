@@ -21,6 +21,15 @@ import numpy as np
 import sys
 from pathlib import Path
 
+# Optional Plotly support for interactive visualizations
+try:
+    import plotly.graph_objects as go
+    import plotly.express as px
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+    print("Note: Plotly not available. Install with 'pip install plotly' for interactive HTML visualizations.")
+
 
 def load_marker_data(input_file):
     """Load marker gene data from CSV file"""
@@ -32,12 +41,224 @@ def load_marker_data(input_file):
         sys.exit(1)
 
 
+def create_dotplot_interactive(df, output_file, top_n=None, group_by=None,
+                               color_by='marker_score', size_by='pc',
+                               title=None, filter_organism=None,
+                               filter_tissue=None):
+    """Create interactive HTML dotplot using Plotly"""
+    if not PLOTLY_AVAILABLE:
+        return
+
+    # Apply filters
+    plot_df = df.copy()
+
+    if filter_organism:
+        if isinstance(filter_organism, str):
+            filter_organism = [filter_organism]
+        plot_df = plot_df[plot_df['organism_ontology_term_label'].isin(filter_organism)]
+
+    if filter_tissue:
+        if isinstance(filter_tissue, str):
+            filter_tissue = [filter_tissue]
+        plot_df = plot_df[plot_df['tissue_ontology_term_label'].isin(filter_tissue)]
+
+    if len(plot_df) == 0:
+        return
+
+    # Get top N genes
+    if top_n:
+        plot_df = plot_df.nlargest(top_n, 'marker_score')
+
+    # Ensure required columns exist
+    required_cols = ['symbol', color_by, size_by]
+    missing_cols = [col for col in required_cols if col not in plot_df.columns]
+    if missing_cols:
+        return
+
+    # Sort by marker_score for better visualization
+    plot_df = plot_df.sort_values('marker_score', ascending=True)
+
+    # Create hover text
+    hover_text = []
+    for _, row in plot_df.iterrows():
+        text = f"Gene: {row['symbol']}<br>"
+        text += f"Marker Score: {row.get('marker_score', 'N/A'):.3f}<br>"
+        text += f"Specificity: {row.get('specificity', 'N/A'):.3f}<br>"
+        text += f"% Cells: {row.get('pc', 'N/A'):.1f}<br>"
+        if group_by and group_by in row:
+            text += f"{group_by}: {row[group_by]}"
+        hover_text.append(text)
+
+    # Create figure
+    fig = go.Figure()
+
+    if group_by and group_by in plot_df.columns:
+        # Group by specified column
+        groups = plot_df[group_by].unique()
+        for i, grp in enumerate(groups):
+            grp_df = plot_df[plot_df[group_by] == grp]
+            grp_hover = [hover_text[j] for j, idx in enumerate(plot_df.index) if idx in grp_df.index]
+
+            fig.add_trace(go.Scatter(
+                x=grp_df[color_by],
+                y=grp_df['symbol'],
+                mode='markers',
+                name=str(grp),
+                marker=dict(
+                    size=grp_df[size_by] * 2,  # Scale size for visibility
+                    color=grp_df[color_by],
+                    colorscale='Reds',
+                    showscale=(i == 0),
+                    colorbar=dict(title=color_by) if i == 0 else None,
+                    line=dict(width=0.5, color='white')
+                ),
+                hovertext=grp_hover,
+                hoverinfo='text'
+            ))
+    else:
+        fig.add_trace(go.Scatter(
+            x=plot_df[color_by],
+            y=plot_df['symbol'],
+            mode='markers',
+            marker=dict(
+                size=plot_df[size_by] * 2,  # Scale size for visibility
+                color=plot_df[color_by],
+                colorscale='Reds',
+                showscale=True,
+                colorbar=dict(title=color_by),
+                line=dict(width=0.5, color='white')
+            ),
+            hovertext=hover_text,
+            hoverinfo='text'
+        ))
+
+    # Update layout
+    fig.update_layout(
+        title=title or "Marker Gene Expression",
+        xaxis_title=color_by,
+        yaxis_title="Gene Symbol",
+        height=max(400, len(plot_df) * 20),
+        hovermode='closest',
+        template='plotly_white'
+    )
+
+    # Save HTML
+    html_output = Path(output_file).with_suffix('.html')
+    fig.write_html(str(html_output))
+    print(f"✓ Interactive dotplot saved to {html_output}")
+
+
+def create_heatmap_interactive(df, output_file, top_n=None, title=None):
+    """Create interactive HTML heatmap using Plotly"""
+    if not PLOTLY_AVAILABLE:
+        return
+
+    # Get top N genes
+    if top_n:
+        df = df.nlargest(top_n, 'marker_score')
+
+    # Check required columns
+    if 'symbol' not in df.columns or 'marker_score' not in df.columns:
+        return
+
+    # Pivot data for heatmap (if we have grouping columns)
+    # For simple case, create a 1D heatmap
+    genes = df['symbol'].values
+    scores = df['marker_score'].values.reshape(1, -1)
+
+    # Create hover text
+    hover_text = []
+    for gene, score in zip(genes, df['marker_score']):
+        hover_text.append(f"Gene: {gene}<br>Marker Score: {score:.3f}")
+    hover_array = np.array(hover_text).reshape(1, -1)
+
+    # Create heatmap
+    fig = go.Figure(data=go.Heatmap(
+        z=scores,
+        x=genes,
+        y=['Marker Score'],
+        colorscale='Reds',
+        text=hover_array,
+        hoverinfo='text',
+        colorbar=dict(title="Marker Score")
+    ))
+
+    # Update layout
+    fig.update_layout(
+        title=title or "Marker Gene Heatmap",
+        xaxis_title="Gene Symbol",
+        height=300,
+        template='plotly_white'
+    )
+
+    # Save HTML
+    html_output = Path(output_file).with_suffix('.html')
+    fig.write_html(str(html_output))
+    print(f"✓ Interactive heatmap saved to {html_output}")
+
+
+def create_barplot_interactive(df, output_file, top_n=None, title=None):
+    """Create interactive HTML barplot using Plotly"""
+    if not PLOTLY_AVAILABLE:
+        return
+
+    # Get top N genes
+    if top_n:
+        df = df.nlargest(top_n, 'marker_score')
+
+    # Check required columns
+    if 'symbol' not in df.columns or 'marker_score' not in df.columns:
+        return
+
+    # Sort by marker_score
+    df = df.sort_values('marker_score', ascending=True)
+
+    # Create hover text
+    hover_text = []
+    for _, row in df.iterrows():
+        text = f"Gene: {row['symbol']}<br>"
+        text += f"Marker Score: {row['marker_score']:.3f}<br>"
+        text += f"Specificity: {row.get('specificity', 'N/A'):.3f}"
+        hover_text.append(text)
+
+    # Create barplot
+    fig = go.Figure(data=go.Bar(
+        x=df['marker_score'],
+        y=df['symbol'],
+        orientation='h',
+        marker=dict(
+            color=df.get('specificity', df['marker_score']),
+            colorscale='Reds',
+            showscale=True,
+            colorbar=dict(title="Specificity")
+        ),
+        hovertext=hover_text,
+        hoverinfo='text'
+    ))
+
+    # Update layout
+    fig.update_layout(
+        title=title or "Marker Gene Scores",
+        xaxis_title="Marker Score",
+        yaxis_title="Gene Symbol",
+        height=max(400, len(df) * 20),
+        template='plotly_white'
+    )
+
+    # Save HTML
+    html_output = Path(output_file).with_suffix('.html')
+    fig.write_html(str(html_output))
+    print(f"✓ Interactive barplot saved to {html_output}")
+
+
 def create_dotplot(df, output_file, top_n=None, group_by=None,
                    color_by='marker_score', size_by='pc',
                    figsize=None, title=None, filter_organism=None,
-                   filter_tissue=None):
+                   filter_tissue=None, generate_static=False):
     """
     Create dotplot visualization of marker genes.
+
+    By default, generates interactive HTML visualization. Set generate_static=True to also create PNG.
 
     Parameters:
     -----------
@@ -61,6 +282,8 @@ def create_dotplot(df, output_file, top_n=None, group_by=None,
         Filter to specific organism(s)
     filter_tissue : str or list, optional
         Filter to specific tissue(s)
+    generate_static : bool, optional
+        If True, also generate static PNG image (default: False)
     """
     # Apply filters
     plot_df = df.copy()
@@ -108,6 +331,23 @@ def create_dotplot(df, output_file, top_n=None, group_by=None,
         # All values are the same, use medium size
         def normalize_size(val):
             return 400
+
+    # Generate interactive HTML version (default)
+    create_dotplot_interactive(
+        df=df,
+        output_file=output_file,
+        top_n=top_n,
+        group_by=group_by,
+        color_by=color_by,
+        size_by=size_by,
+        title=title,
+        filter_organism=filter_organism,
+        filter_tissue=filter_tissue
+    )
+
+    # Only generate static PNG if requested
+    if not generate_static:
+        return
 
     # Group data if requested
     if group_by and group_by in plot_df.columns:
@@ -235,9 +475,11 @@ def create_dotplot(df, output_file, top_n=None, group_by=None,
     plt.close()
 
 
-def create_heatmap(df, output_file, top_n=20, cluster=True, figsize=None, title=None):
+def create_heatmap(df, output_file, top_n=20, cluster=True, figsize=None, title=None, generate_static=False):
     """
     Create heatmap visualization of marker genes across contexts.
+
+    By default, generates interactive HTML visualization. Set generate_static=True to also create PNG.
 
     Parameters:
     -----------
@@ -253,7 +495,21 @@ def create_heatmap(df, output_file, top_n=20, cluster=True, figsize=None, title=
         Figure size
     title : str, optional
         Plot title
+    generate_static : bool, optional
+        If True, also generate static PNG image (default: False)
     """
+    # Generate interactive HTML version (default)
+    create_heatmap_interactive(
+        df=df,
+        output_file=output_file,
+        top_n=top_n,
+        title=title
+    )
+
+    # Only generate static PNG if requested
+    if not generate_static:
+        return
+
     # Get top genes
     top_genes = df.nlargest(top_n, 'marker_score')
 
@@ -307,9 +563,11 @@ def create_heatmap(df, output_file, top_n=20, cluster=True, figsize=None, title=
     plt.close()
 
 
-def create_barplot(df, output_file, top_n=20, figsize=None, title=None):
+def create_barplot(df, output_file, top_n=20, figsize=None, title=None, generate_static=False):
     """
     Create barplot of top marker genes by score.
+
+    By default, generates interactive HTML visualization. Set generate_static=True to also create PNG.
 
     Parameters:
     -----------
@@ -323,7 +581,21 @@ def create_barplot(df, output_file, top_n=20, figsize=None, title=None):
         Figure size
     title : str, optional
         Plot title
+    generate_static : bool, optional
+        If True, also generate static PNG image (default: False)
     """
+    # Generate interactive HTML version (default)
+    create_barplot_interactive(
+        df=df,
+        output_file=output_file,
+        top_n=top_n,
+        title=title
+    )
+
+    # Only generate static PNG if requested
+    if not generate_static:
+        return
+
     # Get top genes
     top_genes = df.nlargest(top_n, 'marker_score').sort_values('marker_score', ascending=True)
 

@@ -34,6 +34,8 @@ from typing import Dict, Any, List, Optional, Iterable, Set, Tuple
 import requests
 from collections import defaultdict
 import heapq
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 BIOGRID_BASE_URL = "https://webservice.thebiogrid.org"
 
@@ -341,8 +343,8 @@ class BioGRIDClient:
         self,
         gene_list: List[str],
         tax_id: str = "9606",
-        max_distance: int = 3,
-        min_score: Optional[float] = 0.5,
+        max_distance: int = 50,
+        min_score: Optional[float] = 0.4,
         experimental_system_types: Optional[Iterable[str]] = None,
         throughput_tag: str = "any",
         inter_species_excluded: bool = True,
@@ -388,26 +390,50 @@ class BioGRIDClient:
         if len(gene_list) < 2:
             return {}
 
-        # Query BioGRID for all genes together
-        interactions = self.get_interactions_for_genes(
-            genes=gene_list,
-            tax_id=tax_id,
-            experimental_system_types=experimental_system_types,
-            throughput_tag=throughput_tag,
-            inter_species_excluded=inter_species_excluded,
-            self_interactions_excluded=self_interactions_excluded,
-            max_results=50000,
-            format="json",
-        )
+        # CRITICAL FIX: Query each gene SEPARATELY to ensure all direct edges are captured
+        # (BioGRID may return different results when querying genes together vs separately)
+        all_interactions = {}
+        interactions_lock = threading.Lock()
 
-        if not interactions:
+        def query_gene_interactions(gene: str):
+            """Query BioGRID for a single gene (thread-safe)."""
+            try:
+                return self.get_interactions_for_genes(
+                    genes=[gene],  # Query one gene at a time
+                    tax_id=tax_id,
+                    experimental_system_types=experimental_system_types,
+                    throughput_tag=throughput_tag,
+                    inter_species_excluded=inter_species_excluded,
+                    self_interactions_excluded=self_interactions_excluded,
+                    max_results=50000,
+                    format="json",
+                )
+            except Exception:
+                return {}
+
+        # Query genes in parallel for performance
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            future_to_gene = {executor.submit(query_gene_interactions, gene): gene
+                              for gene in gene_list}
+
+            for future in as_completed(future_to_gene):
+                try:
+                    interactions = future.result()
+                    # Merge interactions (thread-safe)
+                    with interactions_lock:
+                        all_interactions.update(interactions)
+                except Exception:
+                    # Continue with other genes if one fails
+                    pass
+
+        if not all_interactions:
             return {}
 
         # Build weighted graph
         graph: Dict[str, Dict[str, float]] = defaultdict(dict)
         edge_scores: Dict[Tuple[str, str], Optional[float]] = {}
 
-        for _, rec in interactions.items():
+        for _, rec in all_interactions.items():
             a = rec.get("OFFICIAL_SYMBOL_A")
             b = rec.get("OFFICIAL_SYMBOL_B")
             quant = rec.get("QUANTITATION", "-")
@@ -538,7 +564,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("gene", help="Seed gene symbol, e.g. TP53")
     parser.add_argument(
-        "--api-key", dest="api_key", default="d67883f741f84f6d77ab860097ef6c4f",
+        "--api-key", dest="api_key", default="d3367ed24eeea8fe8718f4993ed63ec9",
         help="BioGRID access key (or set BIOGRID_API_KEY env var)."
     )
     parser.add_argument(

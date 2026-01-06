@@ -1,0 +1,12 @@
+[
+  {
+    "entity": "imatinib",
+    "field": "Drugs and biologics",
+    "exactMatch": false
+  },
+  {
+    "entity": "gefitinib",
+    "field": "Drugs and biologics",
+    "exactMatch": false
+  }
+]

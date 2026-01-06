@@ -949,6 +949,92 @@ sc.tl.umap(adata)
 sc.pl.umap(adata, color=['cell_type', 'disease', 'sex'])
 ```
 
+## Example Workflows
+
+Complete example workflows demonstrating advanced use cases are available in the `examples/` directory.
+
+### IBD Intestinal Tissue Gene Coexpression Analysis
+
+**File:** `examples/ibd_coexpression_comprehensive.py`
+
+A comprehensive workflow analyzing gene coexpression patterns in inflammatory bowel disease (IBD) across multiple cell types. This example demonstrates:
+
+**Key Features:**
+- **Multi-cell type analysis** with regex patterns to capture related cell populations
+- **Automated correlation analysis** for 5 gene lists representing IBD pathways
+- **Interactive visualizations** with hierarchical clustering and p-value annotations
+- **Interpretive reporting** with biological context and clinical implications
+- **Handles ~190,000 cells** across fibroblast, immune, and endothelial populations
+
+**What This Example Teaches:**
+
+1. **Advanced Filtering:**
+   ```python
+   CELL_TYPES = {
+       "fibroblast": "fibroblast|myo|smooth muscle|pericyte",  # Regex for related types
+       "immune": "T cell|B cell|plasma cell|macrophage|monocyte|dendritic",
+       "endothelial": "endothelial"
+   }
+   ```
+
+2. **Gene-Specific Queries:**
+   ```python
+   # Query only specific genes to reduce data transfer
+   ALL_GENES = ["TYK2", "JAK1", "TNFRSF25", "GREM1", ...]
+   ```
+
+3. **Correlation Analysis:**
+   - Pearson correlation for gene pairs
+   - Statistical significance testing
+   - Expression frequency analysis
+
+4. **Interactive Visualizations:**
+   - Plotly heatmaps with hierarchical clustering
+   - Color scale centered at zero
+   - P-value significance annotations
+
+5. **Interpretive Reporting:**
+   - Automated markdown report generation
+   - Biological context for each gene list
+   - Cross-cell type comparisons
+   - Clinical implications
+
+**Outputs:**
+```
+ibd_coexpression_comprehensive_results/
+├── fibroblast/
+│   ├── fibroblast_data.h5ad (12,612 cells)
+│   ├── list1-5_correlation.csv & _pvalues.csv
+│   └── list1-5_heatmap.html (interactive)
+├── immune/ (170,069 cells)
+├── endothelial/ (6,747 cells)
+└── comprehensive_report.md (interpretive summary)
+```
+
+**Adaptation Guide:**
+
+To adapt this workflow for your research, modify:
+1. Tissue filters (`TISSUES`)
+2. Disease conditions (`DISEASES`)
+3. Cell type patterns (`CELL_TYPES`)
+4. Gene lists (`GENE_LISTS`)
+5. Interpretation text in `generate_interpretive_report()`
+
+**See:** `examples/README.md` for complete documentation and adaptation guide.
+
+### Key Patterns from Examples
+
+The IBD workflow demonstrates best practices for complex analyses:
+
+1. **Configuration at top** - Easy parameter modification
+2. **Modular functions** - Single responsibility principle
+3. **Progress logging** - Informative print statements
+4. **Error handling** - Graceful handling of missing data
+5. **Multiple outputs** - CSV (data), HTML (viz), MD (report)
+6. **Biological context** - Interpret results, don't just report numbers
+
+These patterns are recommended for any complex Census query workflow.
+
 ## Integration with Analysis Workflows
 
 Query results integrate seamlessly with standard single-cell analysis tools:

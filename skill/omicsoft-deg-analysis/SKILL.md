@@ -1,6 +1,6 @@
 ---
 name: omicsoft-deg-analysis
-description: Analyze pre-computed differential gene expression statistics from Omicsoft h5ad files to investigate target gene expression patterns and signature enrichment. This skill should be used when users request to analyze bulk DEG data (log2fc, padj) from h5ad files, filter for specific diseases or studies, examine target genes or pathways with custom signatures, perform GSEA enrichment analysis with enhanced summaries including leading edge annotation, and generate interactive visualizations. It handles disease and study filtering with step-by-step validation to prevent zero-result queries, signature-based expression pattern analysis with user-defined gene sets, GSEA enrichment (always includes MSigDB_Hallmark_2020), provides detailed enrichment statistics (significant comparisons count, NES direction separation, input targets in leading edge), and exports results with customizable log2fc and padj thresholds. The skill includes a validation workflow that tests filters incrementally and provides real-time feedback on matching values and observation counts at each step.
+description: Analyze pre-computed differential gene expression statistics from Omicsoft h5ad files to investigate target gene expression patterns and signature enrichment. This skill should be used when users request to analyze bulk DEG data (log2fc, padj) from h5ad files, filter for specific diseases or studies, examine target genes or pathways with custom signatures, perform GSEA enrichment analysis with enhanced summaries including leading edge annotation, and generate interactive visualizations.
 ---
 
 # Omicsoft DEG Analysis
@@ -72,6 +72,7 @@ Ask the user for the following information:
 
 4. **Optional filtering parameters** (all filters are optional and default to None):
    - `--diseases`: Comma-separated disease keywords (e.g., "scleroderma,sclerosis", "crohn,colitis,IBD"). Partial matches supported (case-insensitive)
+   - `--exclude-diseases`: Comma-separated disease keywords to exclude (e.g., "ALS,amyotrophic lateral sclerosis"). Applied after --diseases filter. Useful for including broad disease terms while excluding specific subtypes
    - `--studies`: Comma-separated list of study names (e.g., "GSE12345,GSE67890")
    - `--tissues`: Comma-separated tissue keywords (e.g., "skin,blood,lung"). Partial matches supported (case-insensitive)
    - `--comparison-category`: Comma-separated comparison categories (e.g., "Disease vs. Normal")
@@ -124,6 +125,7 @@ conda run -n <env_name> python scripts/validate_filters.py \
   --target-name <target_name> \
   --signatures <signature_string> \
   [--diseases <disease_keywords>] \
+  [--exclude-diseases <disease_keywords_to_exclude>] \
   [--tissues <tissue_keywords>] \
   [--studies <study_names>] \
   [--comparison-category <categories>] \
@@ -294,6 +296,7 @@ conda run -n <env_name> python scripts/deg_analysis.py \
   --target-name <target_name> \
   --signatures <signature_string> \
   [--diseases <disease_keywords>] \
+  [--exclude-diseases <disease_keywords_to_exclude>] \
   [--studies <study_names>] \
   [--tissues <tissue_keywords>] \
   [--comparison-category <categories>] \
@@ -610,6 +613,32 @@ conda run -n env_name python scripts/deg_analysis.py \
 ```
 
 **Note**: The comparison filter uses fuzzy/partial matching, so "response vs no response" will match all comparisons containing that substring
+
+### Example 7: Disease Inclusion with Exclusion Filter
+
+**User request**: "Analyze scleroderma immune genes but exclude ALS which shares the 'sclerosis' keyword"
+
+**Workflow**:
+```bash
+conda run -n env_name python scripts/deg_analysis.py \
+  --file /path/to/deg_data.h5ad \
+  --target-name Scleroderma_Immune \
+  --diseases "sclerosis,scleroderma,systemic sclerosis" \
+  --exclude-diseases "ALS,amyotrophic lateral sclerosis" \
+  --tissues "lung,skin,dermis" \
+  --comparison-category "Disease vs. Normal" \
+  --signatures "T_cells:CD3D,CD3E,CD3G;B_cells:CD19,CD20,TNFSF13B" \
+  --targets "CD3D,CD3E,CD3G,CD19,CD20,TNFSF13B" \
+  --lfc-threshold 0.0 \
+  --padj-threshold 0.1 \
+  --run-gsea
+```
+
+**Note**:
+- The `--diseases` filter first includes all diseases matching "sclerosis", "scleroderma", or "systemic sclerosis"
+- The `--exclude-diseases` filter then removes any disease containing "ALS" or "amyotrophic lateral sclerosis"
+- This allows broad inclusion terms while precisely excluding unwanted disease subtypes
+- Useful when disease naming conventions overlap (e.g., "sclerosis" matches both scleroderma and ALS)
 
 ## Resources
 

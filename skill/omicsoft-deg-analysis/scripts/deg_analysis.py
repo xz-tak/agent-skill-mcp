@@ -532,6 +532,26 @@ def run_analysis(args):
         base_filter = base_filter & disease_filter
         print(f"  Observations after disease filter: {base_filter.sum():,}")
 
+    # Apply disease exclusion filter if provided
+    if args.exclude_diseases:
+        exclude_pattern = '|'.join([d.strip() for d in args.exclude_diseases.split(',')])
+        print(f"\nExcluding diseases matching: {exclude_pattern}")
+
+        # Get currently filtered observations
+        temp_adata = adata[base_filter]
+        excluded_diseases = [d for d in temp_adata.obs.disease.unique()
+                            if any(term.lower() in d.lower() for term in args.exclude_diseases.split(','))]
+
+        if excluded_diseases:
+            print(f"Found {len(excluded_diseases)} disease(s) to exclude:")
+            for disease in sorted(excluded_diseases):
+                count = (temp_adata.obs.disease == disease).sum()
+                print(f"  - {disease}: {count} observations")
+
+        exclude_filter = ~adata.obs.disease.str.contains(exclude_pattern, case=False, na=False)
+        base_filter = base_filter & exclude_filter
+        print(f"  Observations after disease exclusion: {base_filter.sum():,}")
+
     # Apply study filter if provided
     if args.studies:
         study_list = [s.strip() for s in args.studies.split(',')]
@@ -945,6 +965,7 @@ def main():
 
     # Optional filtering parameters
     parser.add_argument('--diseases', default=None, help='Optional: Comma-separated list of disease keywords to filter (e.g., "scleroderma,sclerosis")')
+    parser.add_argument('--exclude-diseases', default=None, help='Optional: Comma-separated list of disease keywords to exclude (e.g., "ALS,amyotrophic lateral sclerosis")')
     parser.add_argument('--studies', default=None, help='Optional: Comma-separated list of study names to filter (e.g., "GSE12345,GSE67890")')
     parser.add_argument('--tissues', default=None, help='Optional: Comma-separated list of tissue keywords to filter (e.g., "skin,blood,lung")')
     parser.add_argument('--comparison-category', default=None, help='Optional: Comma-separated list of comparison categories to filter (e.g., "Disease vs. Normal")')

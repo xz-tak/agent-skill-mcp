@@ -56,6 +56,12 @@ Use this skill when users request:
 - "Get canonical markers for [cell type]"
 - "Compare [cell type] markers across organisms/tissues"
 
+**Gene Specificity Analysis** (→ use `specificity/` subskill with `compute_specificity.py`):
+- "Which cell types express [gene]?"
+- "Find cell type specificity for [gene list]"
+- "Analyze [genes] specificity in [tissue] tissue"
+- "What cells have [gene] as a marker?"
+
 ## Decision Guide
 
 **Ask yourself**: What is the user trying to do?
@@ -182,12 +188,14 @@ query_log.json          # Query parameters
 - Computational markers from Census data analysis
 - Canonical markers from literature curation
 - Quality filtering (marker_score >= 0.5 default)
-- Multiple visualization types (dotplot, heatmap, barplot)
+- Interactive HTML visualizations (dotplot, heatmap, barplot) with Plotly
 - Organism and tissue filtering
+- **Census-based specificity analysis** for custom gene lists
 
 **Scripts**:
-- `extract_markers.py` - Extract marker genes from CellGuide API
-- `visualize_markers.py` - Create publication-quality visualizations
+- `extract_markers.py` - Extract marker genes from CellGuide API (cell type → markers)
+- `visualize_markers.py` - Generate interactive HTML visualizations (requires plotly)
+- `compute_specificity.py` - Compute cell type specificity from Census data (genes → cell types)
 
 **Documentation**: See `specificity/SKILL.md` for detailed usage
 
@@ -201,7 +209,7 @@ query_log.json          # Query parameters
 ```
 markers_computational.csv    # Computational markers with metrics
 markers_canonical.csv        # Literature-curated markers
-markers_dotplot.png          # Visualization
+markers_dotplot.html         # Interactive visualization
 ```
 
 ## Common Patterns
@@ -315,6 +323,85 @@ high_quality = metadata[
 adata = adata[high_quality.index]
 sc.write("intestine_epithelial_high_quality.h5ad", adata)
 ```
+
+### Pattern 6: Comprehensive Multi-Cell Type Coexpression Analysis
+
+**Complete Example:** `query/examples/ibd_coexpression_comprehensive.py`
+
+User: "Analyze gene coexpression in IBD intestinal tissues across multiple cell types with interpretive reporting"
+
+This advanced workflow demonstrates a complete end-to-end analysis including:
+- Multi-cell type querying with regex patterns
+- Automated correlation analysis across gene lists
+- Interactive HTML visualizations with hierarchical clustering
+- Biological interpretation and comprehensive reporting
+
+**Key Features:**
+```python
+# Query expanded cell populations with regex
+CELL_TYPES = {
+    "fibroblast": "fibroblast|myo|smooth muscle|pericyte",
+    "immune": "T cell|B cell|plasma cell|macrophage|monocyte|dendritic",
+    "endothelial": "endothelial"
+}
+
+# Analyze multiple gene lists representing biological pathways
+GENE_LISTS = {
+    "list1": ["TYK2", "JAK1"],           # JAK-STAT signaling
+    "list2": ["TNFRSF25", "GREM1"],      # TNFR/BMP pathway
+    "list4": ["CDKN2D", "ITGA4", "ITGB1"], # Cell cycle/integrin
+    # ... more lists
+}
+```
+
+**Outputs:**
+- AnnData files for each cell type (~190K total cells)
+- Correlation matrices and p-values for all gene pairs
+- Interactive HTML heatmaps with hierarchical clustering
+- Comprehensive markdown report with biological interpretation
+
+**Highlights:**
+- Handles large-scale queries efficiently
+- Automated statistical analysis
+- Cell type-specific interpretation
+- Cross-cell type comparisons
+- Clinical/biological context
+
+**See:** `query/examples/README.md` for complete documentation and adaptation guide
+
+### Pattern 7: Gene Specificity Analysis for Target Cell Types
+
+User: "Which cell types express IL11 and GREM1 in intestinal tissue? Focus on fibroblasts."
+
+```bash
+# Use compute_specificity.py for gene → cell type specificity analysis
+python specificity/scripts/compute_specificity.py \
+  --genes "IL11,GREM1,TYK2,JAK1" \
+  --tissue intestine \
+  --target-cell-type "fibroblast" \
+  --output fibroblast_specificity
+
+# Output: fibroblast_specificity_specificity.csv with columns:
+# - names (gene), group (cell type), logfoldchanges, pvals_adj
+# - pct_nz_group, pct_nz_reference, lfc_logp
+# - mean_specificity_ratio, score (normalized 0-1)
+```
+
+**Cell Type Matching Options:**
+```bash
+# Substring match (default)
+--target-cell-type "plasma" --match-mode substring
+
+# Regex pattern
+--target-cell-type "fibroblast|myofibroblast|smooth muscle" --match-mode regex
+
+# Cell Ontology ID
+--target-cell-type "CL:0000057" --match-mode id
+```
+
+This is the reverse of `extract_markers.py`:
+- `extract_markers.py`: Input cell type → Output marker genes
+- `compute_specificity.py`: Input gene list + target cell type → Output specificity scores
 
 ## Reference Documentation
 

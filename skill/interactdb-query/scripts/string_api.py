@@ -42,6 +42,8 @@ from typing import Optional, Dict, Any, List, Tuple, Set
 from dataclasses import dataclass, asdict
 from collections import defaultdict
 import heapq
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 
 
 STRING_API_BASE = "https://string-db.org/api"
@@ -148,7 +150,7 @@ class StringClient:
         min_fusion_score: int = 0,
         min_cooccurrence_score: int = 0,
         required_score: Optional[int] = None,
-        network_type: str = "functional",
+        network_type: Optional[str] = None,
         add_nodes: int = 0,
     ) -> List[StringNeighbor]:
         """
@@ -180,8 +182,9 @@ class StringClient:
             Minimum phylogenetic co-occurrence score (0-999)
         required_score : int, optional
             If provided, overrides min_combined_score for API filtering
-        network_type : str
-            'functional' (default) or 'physical' interactions
+        network_type : str, optional
+            'functional' (captures ALL interaction types: physical + predicted + functional),
+            'physical' (only direct physical binding), or None (defaults to 'functional')
         add_nodes : int
             Number of additional nodes to add to network (0 = only direct)
 
@@ -190,6 +193,10 @@ class StringClient:
         List[StringNeighbor]
             Sorted by combined score (descending)
         """
+        # Default to functional network (captures all interaction types)
+        if network_type is None:
+            network_type = "functional"
+
         # Resolve identifier to STRING ID for matching
         string_id = self.resolve_identifier(identifier, species)
         if not string_id:
@@ -377,7 +384,7 @@ class StringClient:
         min_neighborhood_score: int = 0,
         min_fusion_score: int = 0,
         min_cooccurrence_score: int = 0,
-        network_type: str = "functional",
+        network_type: Optional[str] = None,
     ) -> List[StringNeighbor]:
         """
         Get protein interaction neighbors with automatic multi-hop BFS expansion.
@@ -414,8 +421,9 @@ class StringClient:
             Minimum gene fusion score (0-999)
         min_cooccurrence_score : int
             Minimum phylogenetic co-occurrence score (0-999)
-        network_type : str
-            'functional' (default) or 'physical' interactions
+        network_type : str, optional
+            'functional' (captures ALL interaction types: physical + predicted + functional),
+            'physical' (only direct physical binding), or None (defaults to 'functional')
 
         Returns
         -------
@@ -432,6 +440,10 @@ class StringClient:
         >>> print(f"2-hop: {sum(1 for n in neighbors if n.hop == 2)}")
         """
         identifier = identifier.strip()
+
+        # Default to functional network (captures all interaction types)
+        if network_type is None:
+            network_type = "functional"
 
         # Track all neighbors across hops
         all_neighbors: Dict[str, StringNeighbor] = {}
@@ -522,13 +534,13 @@ class StringClient:
         gene_list: List[str],
         species: int = 9606,
         max_distance: int = 50,
-        max_network_expansion: int = 5,
+        max_network_expansion: int = 20,
         min_combined_score: int = 400,
         min_experimental_score: int = 0,
         min_database_score: int = 0,
         min_textmining_score: int = 0,
         min_coexpression_score: int = 0,
-        network_type: str = "functional",
+        network_type: Optional[str] = None,
     ) -> Dict[Tuple[str, str], Dict[str, Any]]:
         """
         Find shortest paths between all pairs of query genes using interaction network.
@@ -547,7 +559,7 @@ class StringClient:
         max_distance : int
             Maximum path length in final Dijkstra search (default 50)
         max_network_expansion : int
-            Maximum BFS hops to expand network (default 5)
+            Maximum BFS hops to expand network (default 20)
             Controls depth of network exploration, not path length
         min_combined_score : int
             Minimum combined confidence score for edges (0-999, default 400)
@@ -559,8 +571,9 @@ class StringClient:
             Minimum text mining score (0-999, default 0)
         min_coexpression_score : int
             Minimum coexpression score (0-999, default 0)
-        network_type : str
-            'functional' (default) or 'physical' interactions
+        network_type : str, optional
+            'functional' (captures ALL interaction types: physical + predicted + functional),
+            'physical' (only direct physical binding), or None (defaults to 'functional')
 
         Returns
         -------
@@ -578,6 +591,10 @@ class StringClient:
         if len(gene_list) < 2:
             return {}
 
+        # Default to functional network (captures all interaction types)
+        if network_type is None:
+            network_type = "functional"
+
         # Resolve all query genes to STRING IDs
         gene_to_string_id = {}
         string_id_to_gene = {}
@@ -592,36 +609,48 @@ class StringClient:
                 gene_to_string_id[gene.upper()] = f"{species}.{gene}"
 
         # Phase 1: Expand network iteratively via BFS to build complete graph
+        # CRITICAL FIX: Query each gene SEPARATELY to ensure all direct edges are captured
+        # (STRING API returns different/limited results when querying multiple genes batched)
         frontier = set(g.upper() for g in gene_list)
         visited = set(frontier)
         all_interactions = []
+        interactions_lock = threading.Lock()
+
+        def query_gene_network(gene: str) -> List[Dict]:
+            """Query STRING network for a single gene (thread-safe)."""
+            params = {
+                "identifiers": gene,
+                "species": species,
+                "network_type": network_type,
+                "add_nodes": 1000,  # Increased from 10 to 1000 for better edge coverage
+            }
+            try:
+                return self._request("json/network", params)
+            except Exception:
+                return []
 
         for expansion_hop in range(1, max_network_expansion + 1):
             if not frontier:
                 break
 
-            # Query interactions for current frontier
-            frontier_str = "|".join(frontier)
-            params = {
-                "identifiers": frontier_str,
-                "species": species,
-                "network_type": network_type,
-                "add_nodes": 0,  # Only direct neighbors
-            }
+            # Query each gene in parallel for performance
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_gene = {executor.submit(query_gene_network, gene): gene
+                                  for gene in frontier}
 
-            try:
-                data = self._request("json/network", params)
-            except Exception:
-                break
-
-            if not data:
-                break
-
-            all_interactions.extend(data)
+                for future in as_completed(future_to_gene):
+                    try:
+                        data = future.result()
+                        if data:
+                            with interactions_lock:
+                                all_interactions.extend(data)
+                    except Exception:
+                        # Continue with other genes if one fails
+                        pass
 
             # Extract new genes from interactions
             new_frontier = set()
-            for interaction in data:
+            for interaction in all_interactions:
                 pref_a = interaction.get("preferredName_A", "").upper()
                 pref_b = interaction.get("preferredName_B", "").upper()
 
@@ -632,8 +661,8 @@ class StringClient:
 
             frontier = new_frontier
 
-            # Stop early if we have enough nodes
-            if len(visited) > 1000:  # Prevent explosion
+            # Stop early if we have enough nodes (increased threshold)
+            if len(visited) > 5000:  # Increased from 1000 to accommodate more edges
                 break
 
         # Phase 2: Build complete graph from all interactions
@@ -784,7 +813,7 @@ def get_string_neighbors(
     min_database: int = 0,
     min_textmining: int = 0,
     min_coexpression: int = 0,
-    network_type: str = "functional"
+    network_type: Optional[str] = None
 ) -> pd.DataFrame:
     """
     Convenience function to get STRING neighbors as DataFrame.
@@ -799,8 +828,9 @@ def get_string_neighbors(
         Maximum neighbors to return
     min_score : int
         Minimum combined confidence score (0-999)
-    network_type : str
-        'functional' (default) or 'physical'
+    network_type : str, optional
+        'functional' (captures ALL interaction types: physical + predicted + functional),
+        'physical' (only direct physical binding), or None (defaults to 'functional')
 
     Returns
     -------

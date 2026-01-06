@@ -18,7 +18,18 @@ import seaborn as sns
 from scipy import sparse
 from scipy.stats import pearsonr, spearmanr
 from scipy.cluster import hierarchy
+from scipy.spatial.distance import pdist, squareform
 import scanpy as sc
+
+# Optional plotly import for interactive visualizations
+try:
+    import plotly.graph_objects as go
+    import plotly.figure_factory as ff
+    from plotly.subplots import make_subplots
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
+    print("Warning: plotly not installed. Interactive HTML heatmaps will not be generated.")
 
 
 def load_gene_list(gene_list_arg: str) -> List[str]:
@@ -255,6 +266,140 @@ def compute_correlation_matrix(
     return corr_df, pval_df
 
 
+def plot_interactive_heatmap(
+    corr_df: pd.DataFrame,
+    pval_df: pd.DataFrame,
+    output_path: Path,
+    method: str = 'pearson',
+    title: Optional[str] = None,
+    cluster: bool = True
+):
+    """
+    Create interactive HTML heatmap with hierarchical clustering and significance markers.
+
+    Args:
+        corr_df: Correlation matrix DataFrame
+        pval_df: P-value matrix DataFrame
+        output_path: Output HTML file path
+        method: Correlation method (for title)
+        title: Custom plot title
+        cluster: Perform hierarchical clustering
+    """
+    if not PLOTLY_AVAILABLE:
+        print("Plotly not available. Skipping interactive heatmap generation.")
+        return
+
+    print(f"\nCreating interactive HTML heatmap...")
+
+    genes = corr_df.index.tolist()
+    n_genes = len(genes)
+
+    # Create text annotations with correlation values and p-value significance
+    text_annot = []
+    for i in range(n_genes):
+        row_annot = []
+        for j in range(n_genes):
+            r = corr_df.iloc[i, j]
+            p = pval_df.iloc[i, j]
+
+            # Add significance stars
+            sig = ""
+            if i != j:  # Skip diagonal
+                if p < 0.001:
+                    sig = "***"
+                elif p < 0.01:
+                    sig = "**"
+                elif p < 0.05:
+                    sig = "*"
+
+            # Format annotation
+            if i == j:
+                row_annot.append(f"{r:.2f}")
+            else:
+                row_annot.append(f"{r:.3f}{sig}")
+        text_annot.append(row_annot)
+
+    # Perform hierarchical clustering if requested and more than 2 genes
+    if cluster and n_genes > 2:
+        # Convert correlation to distance (1 - abs(correlation))
+        dist_matrix = 1 - np.abs(corr_df.values)
+        np.fill_diagonal(dist_matrix, 0)
+
+        # Convert to condensed distance matrix
+        dist_condensed = squareform(dist_matrix, checks=False)
+
+        # Perform hierarchical clustering
+        linkage = hierarchy.linkage(dist_condensed, method='average')
+        dendro = hierarchy.dendrogram(linkage, no_plot=True)
+        gene_order = dendro['leaves']
+
+        # Reorder matrices
+        corr_ordered = corr_df.iloc[gene_order, gene_order]
+        text_ordered = [[text_annot[i][j] for j in gene_order] for i in gene_order]
+        genes_ordered = [genes[i] for i in gene_order]
+
+        print(f"Applied hierarchical clustering (average linkage)")
+    else:
+        corr_ordered = corr_df
+        text_ordered = text_annot
+        genes_ordered = genes
+
+    # Create interactive heatmap using plotly
+    fig = go.Figure(data=go.Heatmap(
+        z=corr_ordered.values,
+        x=genes_ordered,
+        y=genes_ordered,
+        text=text_ordered,
+        texttemplate='%{text}',
+        textfont={"size": 10 if n_genes <= 20 else 8},
+        colorscale='RdBu_r',  # Red-Blue reversed (red=positive, blue=negative)
+        zmid=0,  # Center colorscale at 0
+        zmin=-1,
+        zmax=1,
+        colorbar=dict(
+            title=f"{method.capitalize()}<br>Correlation",
+            tickmode="linear",
+            tick0=-1,
+            dtick=0.5
+        ),
+        hovertemplate='<b>%{y} vs %{x}</b><br>Correlation: %{z:.3f}<extra></extra>'
+    ))
+
+    # Update layout
+    if title is None:
+        title = f"Gene Coexpression ({method.capitalize()} correlation)"
+
+    fig.update_layout(
+        title={
+            'text': title,
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 16, 'family': 'Arial Black'}
+        },
+        xaxis={'title': '', 'side': 'bottom', 'tickangle': -45},
+        yaxis={'title': '', 'autorange': 'reversed'},
+        width=max(600, n_genes * 40),
+        height=max(600, n_genes * 40),
+        plot_bgcolor='white',
+        paper_bgcolor='white'
+    )
+
+    # Add annotations for significance levels
+    fig.add_annotation(
+        text="* p<0.05, ** p<0.01, *** p<0.001",
+        xref="paper", yref="paper",
+        x=0.5, y=-0.10,
+        showarrow=False,
+        font=dict(size=10, color="gray"),
+        xanchor='center'
+    )
+
+    # Save as HTML
+    html_path = Path(str(output_path).replace('.png', '.html'))
+    fig.write_html(html_path)
+    print(f"Interactive heatmap saved to: {html_path}")
+
+
 def plot_correlation_heatmap(
     corr_df: pd.DataFrame,
     pval_df: pd.DataFrame,
@@ -267,15 +412,17 @@ def plot_correlation_heatmap(
     vmax: float = 1.0,
     cluster: bool = True,
     annot: bool = True,
-    fmt: str = '.2f'
+    fmt: str = '.2f',
+    generate_html: bool = True
 ):
     """
     Create correlation heatmap with hierarchical clustering and significance markers.
+    Generates both static PNG and interactive HTML versions.
 
     Args:
         corr_df: Correlation matrix DataFrame
         pval_df: P-value matrix DataFrame
-        output_path: Output file path
+        output_path: Output file path (PNG)
         method: Correlation method (for title)
         title: Custom plot title
         figsize: Figure size (width, height)
@@ -285,6 +432,7 @@ def plot_correlation_heatmap(
         cluster: Perform hierarchical clustering
         annot: Annotate cells with correlation values and significance
         fmt: Format string for annotations
+        generate_html: Also generate interactive HTML heatmap (default: True)
     """
     print(f"\nCreating correlation heatmap...")
 
@@ -376,6 +524,17 @@ def plot_correlation_heatmap(
     print(f"Heatmap saved to: {output_path}")
 
     plt.close()
+
+    # Generate interactive HTML version if requested
+    if generate_html:
+        plot_interactive_heatmap(
+            corr_df=corr_df,
+            pval_df=pval_df,
+            output_path=output_path,
+            method=method,
+            title=title,
+            cluster=cluster
+        )
 
 
 def generate_summary_report(

@@ -28,6 +28,12 @@ from typing import Union, List, Dict, Any, Optional
 from pathlib import Path
 
 # Import from each database module
+import sys
+# Add the scripts directory to the Python path for imports
+scripts_dir = Path(__file__).parent
+if str(scripts_dir) not in sys.path:
+    sys.path.insert(0, str(scripts_dir))
+
 from string_api import StringClient
 from intact_api import get_neighbors_multihop, find_shortest_paths_intact
 try:
@@ -42,7 +48,7 @@ def query_single_gene_all_databases(
     species: Union[int, str] = 9606,
     top_n: int = 100,
     export_results: bool = True,
-    output_dir: str = ".",
+    output_dir: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
     """
@@ -58,8 +64,8 @@ def query_single_gene_all_databases(
         Maximum number of neighbors to return per database
     export_results : bool
         Always export results to CSV, even if empty (default True)
-    output_dir : str
-        Directory to save result files (default current directory)
+    output_dir : Optional[str]
+        Directory to save result files (default: current working directory)
     **kwargs : dict
         Additional database-specific parameters:
         - min_combined_score, min_experimental_score, etc. for STRING
@@ -82,6 +88,10 @@ def query_single_gene_all_databases(
     """
     results = {}
     exports = {}
+
+    # Use current working directory if no output_dir specified
+    if output_dir is None:
+        output_dir = os.getcwd()
 
     # Convert species string to appropriate format
     species_int = 9606 if species in (9606, "human", "homo sapiens") else int(species)
@@ -159,7 +169,7 @@ def query_single_gene_all_databases(
         exports['biogrid'] = None
         print("✗ BioGRID: Module not available")
     else:
-        api_key = os.environ.get('BIOGRID_API_KEY','d67883f741f84f6d77ab860097ef6c4f')
+        api_key = os.environ.get('BIOGRID_API_KEY')
         if not api_key:
             results['biogrid'] = "BioGRID API key not found (set BIOGRID_API_KEY environment variable)"
             exports['biogrid'] = None
@@ -201,7 +211,7 @@ def query_shortest_paths_all_databases(
     species: Union[int, str] = 9606,
     max_distance: int = 50,
     export_results: bool = True,
-    output_dir: str = ".",
+    output_dir: Optional[str] = None,
     **kwargs
 ) -> Dict[str, Any]:
     """
@@ -217,8 +227,8 @@ def query_shortest_paths_all_databases(
         Maximum path length (default 50)
     export_results : bool
         Always export results to JSON, even if empty (default True)
-    output_dir : str
-        Directory to save result files
+    output_dir : Optional[str]
+        Directory to save result files (default: current working directory)
     **kwargs : dict
         Additional database-specific parameters:
         - max_network_expansion: BFS expansion depth (default 5)
@@ -245,6 +255,10 @@ def query_shortest_paths_all_databases(
 
     results = {}
     exports = {}
+
+    # Use current working directory if no output_dir specified
+    if output_dir is None:
+        output_dir = os.getcwd()
 
     # Convert species string to appropriate format
     species_int = 9606 if species in (9606, "human", "homo sapiens") else int(species)
@@ -291,7 +305,6 @@ def query_shortest_paths_all_databases(
             gene_list=gene_list,
             species=species_str,
             max_distance=max_distance,
-            max_network_expansion=kwargs.get('max_network_expansion', 5),
             min_miscore=kwargs.get('min_miscore', 0.4),
             organism_filter=kwargs.get('organism_filter', None),
             miql_max_results=kwargs.get('miql_max_results', 50000)
@@ -330,8 +343,7 @@ def query_shortest_paths_all_databases(
                     gene_list=gene_list,
                     tax_id=str(species_int),
                     max_distance=max_distance,
-                    max_network_expansion=kwargs.get('max_network_expansion', 5),
-                    min_score=kwargs.get('min_score', 0.5)
+                    min_score=kwargs.get('min_score', 0)
                 )
                 results['biogrid'] = biogrid_paths
 

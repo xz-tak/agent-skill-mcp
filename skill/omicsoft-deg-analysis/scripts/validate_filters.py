@@ -111,6 +111,51 @@ def validate_filters_stepwise(args):
             validation_results['final_obs'] = 0
             return validation_results
 
+    # Step 1.5: Disease exclusion filter
+    if args.exclude_diseases:
+        print(f"\n[STEP 1.5] Disease Exclusion Filter")
+        print(f"  Exclude query: {args.exclude_diseases}")
+
+        exclude_terms = [d.strip() for d in args.exclude_diseases.split(',')]
+        print(f"  Filter type: Substring match (case-insensitive)")
+        print(f"  Exclusion terms: {exclude_terms}")
+
+        # Show diseases that will be excluded
+        filtered_adata = adata[base_filter]
+        unique_diseases = filtered_adata.obs.disease.unique()
+
+        # Find matches to exclude
+        excluded_diseases = []
+        for disease in unique_diseases:
+            for term in exclude_terms:
+                if term.lower() in disease.lower():
+                    excluded_diseases.append(disease)
+                    break
+
+        if excluded_diseases:
+            print(f"\n  ✓ Found {len(excluded_diseases)} disease(s) to exclude:")
+            for disease in sorted(set(excluded_diseases)):
+                count = (filtered_adata.obs.disease == disease).sum()
+                print(f"    - {disease}: {count:,} obs")
+
+            # Apply exclusion filter
+            exclude_pattern = '|'.join([d.strip() for d in args.exclude_diseases.split(',')])
+            exclude_filter = ~adata.obs.disease.str.contains(exclude_pattern, case=False, na=False)
+            base_filter = base_filter & exclude_filter
+            current_obs = base_filter.sum()
+
+            print(f"\n  → Observations after disease exclusion: {current_obs:,}")
+            validation_results['filters_applied'].append({
+                'step': 1.5,
+                'filter': 'disease_exclusion',
+                'query': args.exclude_diseases,
+                'matches': len(set(excluded_diseases)),
+                'obs_remaining': current_obs,
+                'status': 'success'
+            })
+        else:
+            print(f"\n  ℹ No diseases matched exclusion criteria (this is normal)")
+
     # Step 2: Tissue filter
     if args.tissues:
         print(f"\n[STEP 2] Tissue Filter")
@@ -431,6 +476,8 @@ def validate_filters_stepwise(args):
     ]
     if args.diseases:
         cmd_parts.append(f'--diseases "{args.diseases}"')
+    if args.exclude_diseases:
+        cmd_parts.append(f'--exclude-diseases "{args.exclude_diseases}"')
     if args.tissues:
         cmd_parts.append(f'--tissues "{args.tissues}"')
     if args.studies:
@@ -464,6 +511,7 @@ def main():
 
     # Optional filtering parameters
     parser.add_argument('--diseases', default=None, help='Disease keywords (substring match)')
+    parser.add_argument('--exclude-diseases', default=None, help='Disease keywords to exclude (substring match)')
     parser.add_argument('--studies', default=None, help='Study names (exact match)')
     parser.add_argument('--tissues', default=None, help='Tissue keywords (substring match)')
     parser.add_argument('--comparison-category', default=None, help='Comparison categories (exact match)')

@@ -116,7 +116,16 @@ python scripts/extract_markers.py \
 
 ### Step 2: Visualize Markers
 
-Use `scripts/visualize_markers.py` to create publication-quality visualizations.
+Use `scripts/visualize_markers.py` to create interactive visualizations.
+
+**Default Output**: Interactive HTML files with Plotly visualizations
+- **Hover details**: Gene name, marker scores, specificity, and expression metrics
+- **Interactive features**: Zoom, pan, and export capabilities
+- **Color scheme**: Uses 'Reds' colormap for consistency
+- **Saved to**: Working directory (or user-specified path)
+- **Requires**: `plotly` package (install with: `pip install plotly`)
+
+**Optional Static PNG**: Set `generate_static=True` in function call to also create high-resolution PNG (300 DPI)
 
 **Dotplot Visualization**:
 
@@ -126,63 +135,70 @@ The dotplot is the primary visualization for marker genes:
 - **Default**: Shows genes with marker_score >= 0.5
 
 ```bash
-# Default: shows markers with marker_score >= 0.5
+# Default: generates interactive HTML with markers having marker_score >= 0.5
+# Output: bcell_dotplot.html
 python scripts/visualize_markers.py \
   --input bcell_markers_computational.csv \
-  --output bcell_dotplot.png \
+  --output bcell_dotplot.html \
   --title "B Cell Marker Genes"
 ```
 
 **Dotplot with Top N Genes**:
 ```bash
+# Output: dotplot_top.html
 python scripts/visualize_markers.py \
   --input markers_computational.csv \
-  --output dotplot_top.png \
+  --output dotplot_top.html \
   --top-n 30 \
   --title "Top 30 Marker Genes"
 ```
 
 **Dotplot with Grouping**:
 ```bash
+# Output: dotplot_grouped.html
 python scripts/visualize_markers.py \
   --input markers_computational.csv \
-  --output dotplot_grouped.png \
+  --output dotplot_grouped.html \
   --top-n 40 \
   --group-by organism_ontology_term_label
 ```
 
 **Filtered Dotplot with Custom Cutoff**:
 ```bash
+# Output: human_dotplot.html
 python scripts/visualize_markers.py \
   --input markers_computational.csv \
-  --output human_dotplot.png \
+  --output human_dotplot.html \
   --filter-organism "Homo sapiens" \
   --marker-score-cutoff 1.0
 ```
 
 **Heatmap Visualization**:
 ```bash
+# Output: markers_heatmap.html
 python scripts/visualize_markers.py \
   --input markers_computational.csv \
   --plot-type heatmap \
   --top-n 30 \
-  --output markers_heatmap.png
+  --output markers_heatmap.html
 ```
 
 **Barplot Visualization**:
 ```bash
+# Output: markers_barplot.html
 python scripts/visualize_markers.py \
   --input markers_computational.csv \
   --plot-type barplot \
   --marker-score-cutoff 0.8 \
-  --output markers_barplot.png
+  --output markers_barplot.html
 ```
 
 **Custom Color and Size Metrics**:
 ```bash
+# Output: dotplot.html
 python scripts/visualize_markers.py \
   --input markers_computational.csv \
-  --output dotplot.png \
+  --output dotplot.html \
   --color-by specificity \
   --size-by me \
   --top-n 30
@@ -489,6 +505,203 @@ python scripts/extract_markers.py \
 
 # This will extract exactly 25 markers, bypassing the marker_score cutoff
 ```
+
+## Census-based Specificity Analysis
+
+For analyzing cell type specificity of **specific genes** rather than finding markers for a cell type, use `compute_specificity.py`. This tool:
+
+1. Queries raw expression data from CELLxGENE Census
+2. Filters by tissue/disease/species but includes **all cell types**
+3. **Optionally target specific cell type(s)** via name, substring, regex, or Cell Ontology ID
+4. Runs scanpy's `rank_genes_groups` with wilcoxon test
+5. Computes custom specificity scores for target cell types
+
+### When to Use compute_specificity.py
+
+Use this tool when you want to:
+- Find which cell types express specific genes (reverse lookup)
+- Analyze cell type specificity for a gene signature
+- **Calculate specificity for specific cell type(s)** (e.g., fibroblasts, plasma cells)
+- Get detailed statistical metrics (fold change, p-values, % expressing)
+- Filter by tissue/disease context while comparing all cell types
+
+### compute_specificity.py Usage
+
+**Target-specific Analysis (Recommended):**
+```bash
+# Analyze specificity for fibroblasts in intestinal tissue
+python scripts/compute_specificity.py \
+  --genes "IL11,GREM1,TYK2,JAK1" \
+  --tissue intestine \
+  --target-cell-type "fibroblast" \
+  --output fibroblast_specificity
+```
+
+**Substring Matching:**
+```bash
+# Match all cell types containing "plasma"
+python scripts/compute_specificity.py \
+  --genes "IL11,GREM1" \
+  --tissue intestine \
+  --target-cell-type "plasma" \
+  --match-mode substring \
+  --output plasma_specificity
+```
+
+**Regex Pattern Matching:**
+```bash
+# Match fibroblasts, myofibroblasts, and smooth muscle cells
+python scripts/compute_specificity.py \
+  --genes "IL11,GREM1" \
+  --tissue intestine \
+  --target-cell-type "fibroblast|myofibroblast|smooth muscle" \
+  --match-mode regex \
+  --output stromal_specificity
+```
+
+**Cell Ontology ID Matching:**
+```bash
+# Use Cell Ontology ID (CL:0000057 = fibroblast)
+python scripts/compute_specificity.py \
+  --genes "APOE,APOC1" \
+  --tissue liver \
+  --target-cell-type "CL:0000057" \
+  --match-mode id \
+  --output hepatocyte_specificity
+```
+
+**All Cell Types (no target filter):**
+```bash
+python scripts/compute_specificity.py \
+  --genes "IL11,GREM1" \
+  --tissue intestine \
+  --output all_cells_specificity
+```
+
+**With Disease Filter:**
+```bash
+python scripts/compute_specificity.py \
+  --genes "IL11,GREM1,TYK2,JAK1" \
+  --tissue intestine \
+  --disease "Crohn disease,ulcerative colitis,normal" \
+  --target-cell-type "fibroblast" \
+  --output ibd_fibroblast_specificity
+```
+
+**Using Gene File:**
+```bash
+# genes.txt contains one gene symbol per line
+python scripts/compute_specificity.py \
+  --genes genes.txt \
+  --tissue liver \
+  --target-cell-type "hepatocyte" \
+  --output liver_gene_specificity
+```
+
+### compute_specificity.py Arguments
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--genes` | Gene list (comma-separated) or file path | Required |
+| `--output` | Output prefix for result files | Required |
+| `--tissue` | Tissue filter(s), comma-separated | None |
+| `--disease` | Disease filter(s), comma-separated | None |
+| `--species` | Species (human/mouse) | human |
+| `--development-stage` | Development stage filter | adult |
+| `--target-cell-type` | Target cell type pattern for specificity calculation | None (all) |
+| `--match-mode` | Cell type matching: exact/substring/regex/id | substring |
+| `--group-by` | Column for cell grouping | cell_type |
+| `--pval-cutoff` | P-value cutoff for markers | 0.05 |
+| `--log2fc-min` | Minimum log2 fold change | 1.0 |
+| `--output-dir` | Output directory | . |
+| `--no-interactive` | Skip cell type matching confirmation | False |
+
+### Cell Type Matching Modes
+
+| Mode | Description | Example |
+|------|-------------|---------|
+| `exact` | Case-insensitive exact match | "B cell" matches only "B cell" |
+| `substring` | Match if pattern is substring | "plasma" matches "plasma cell", "plasmablast" |
+| `regex` | Regular expression pattern | "fibroblast\|myo" matches fibroblast, myofibroblast |
+| `id` | Match by Cell Ontology ID | "CL:0000057" matches fibroblast |
+
+**Interactive Confirmation:** By default, matched cell types are displayed and you can:
+- `yes` - proceed with all matches
+- `no` - cancel
+- `select` - choose specific matches by number
+
+Use `--no-interactive` to skip confirmation (auto-proceed with all matches).
+
+### Specificity Score Methodology
+
+The scoring formula combines multiple metrics:
+
+```
+lfc_logp = logfoldchanges × -log(pvals_adj + 1e-323) ×
+           (pct_nz_group - pct_nz_reference) × (1 - pct_nz_reference)
+```
+
+This composite score rewards genes that:
+- Have high fold change (strong differential expression)
+- Have low p-values (statistically significant)
+- Are expressed in a higher fraction of target cells vs reference
+- Are NOT widely expressed in reference cells (specificity)
+
+Then, specificity ratio is calculated:
+```
+mean_specificity_ratio = cell_type_lfc_logp / total_lfc_logp_across_all_cell_types
+```
+
+Finally, normalized as percentile rank:
+```
+score = percentile_rank(mean_specificity_ratio)
+```
+
+### Output Columns
+
+| Column | Description |
+|--------|-------------|
+| `names` | Gene symbol |
+| `group` | Cell type (from groupby column) |
+| `logfoldchanges` | Log2 fold change vs other cell types |
+| `pvals` | Raw p-values |
+| `pvals_adj` | Adjusted p-values (Benjamini-Hochberg) |
+| `pct_nz_group` | % cells expressing in this cell type |
+| `pct_nz_reference` | % cells expressing in other cell types |
+| `lfc_logp` | Raw composite score |
+| `total_lfc_logp` | Sum of lfc_logp across all cell types |
+| `mean_specificity_ratio` | Cell type specificity ratio |
+| `score` | Normalized percentile rank (0-1) |
+
+### Output Files
+
+- `{output}_specificity.csv` - Full results with all scores
+- `{output}_summary.json` - Query parameters and summary statistics
+
+### Example: Finding Cell Types for IBD Targets
+
+```bash
+# Query: Which cell types express IL11 and GREM1 in IBD intestinal tissue?
+python scripts/compute_specificity.py \
+  --genes "IL11,GREM1" \
+  --tissue intestine \
+  --disease "Crohn disease,ulcerative colitis" \
+  --output ibd_targets
+
+# Results show specificity scores for each gene × cell type combination
+# High scores indicate cell types where the gene is specifically expressed
+```
+
+### Comparison: extract_markers.py vs compute_specificity.py
+
+| Feature | extract_markers.py | compute_specificity.py |
+|---------|-------------------|----------------------|
+| Data source | CellGuide API (pre-computed) | Census API (raw data) |
+| Input | Cell type name | Gene list |
+| Output | Markers for that cell type | Cell types for those genes |
+| Use case | "Find markers for B cells" | "Which cells express IL11?" |
+| Speed | Fast (pre-computed) | Slower (computes on-the-fly) |
+| Customization | Limited filters | Full Census filters |
 
 ## Advanced Usage
 

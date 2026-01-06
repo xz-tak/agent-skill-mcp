@@ -140,10 +140,14 @@ load_dotenv()
 # Logging
 # ==============================================================================
 LOG_PATH = "./biobridge_mcp.log"
+# Logging is disabled by default. Set BIOBRIDGE_MCP_LOG_ENABLED=1 to enable.
+LOGGING_ENABLED = os.getenv("BIOBRIDGE_MCP_LOG_ENABLED", "").lower() in ("1", "true", "yes")
 
 
 def _setup_logging() -> None:
     """Configure file-based logging for the MCP server."""
+    if not LOGGING_ENABLED:
+        return
     os.makedirs(os.path.dirname(LOG_PATH) or ".", exist_ok=True)
     fmt = "%(asctime)s [BioBridge MCP pid=%(process)d] %(message)s"
     logging.basicConfig(
@@ -156,6 +160,8 @@ def _setup_logging() -> None:
 
 def _log(msg: str) -> None:
     """Write a message to the configured log file."""
+    if not LOGGING_ENABLED:
+        return
     logging.info(msg)
 
 

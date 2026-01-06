@@ -1,0 +1,39 @@
+[workspace]
+name = "ultra-inference-mcp"
+version = "0.1.0"
+description = "MCP server for ULTRA model inference"
+channels = ["https://prefix.dev/conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = ">=3.10,<3.12"
+ninja = "*"
+easydict = "*"
+pyyaml = "*"
+numpy = "*"
+matplotlib = "*"
+seaborn = "*"
+click = "*"
+
+[pypi-dependencies]
+polars = ">=1"
+fastmcp = ">=0.2.0"
+pandas = ">=2.0.0"
+tabulate = ">=0.9.0"
+
+[feature.gpu]
+system-requirements = {cuda = "12.4"}
+
+[feature.gpu.target.linux-64.dependencies]
+pytorch-gpu = ">=2.1.0"
+pytorch_scatter = ">=2.1.2"
+pytorch_geometric = ">=2.4.0"
+cuda-nvcc = ">=12.6.85,<13"
+cuda = ">=12.6.3,<13"
+
+[environments]
+gpu = ["gpu"]
+default = ["gpu"]
+
+[tasks]
+dev = "python ultra_inference_server.py"
