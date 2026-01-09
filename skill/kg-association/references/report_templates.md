@@ -1,5 +1,41 @@
 # Report Templates
 
+## Executive Summary Template (REQUIRED for all reports)
+
+The main report (`KG_Association_Report.md`) MUST begin with this pct_rank summary:
+
+```markdown
+# KG Association Analysis Report: {Combo} for {Disease}
+
+**Date:** {YYYY-MM-DD}
+**Target Combination:** {Target1} + {Target2}
+**Disease Indication:** {Disease}
+
+---
+
+## Executive Summary
+
+### Key Findings Summary
+
+| Method | {Target1} → {Disease} (pct_rank) | {Target2} → {Disease} (pct_rank) | Combo pct_rank |
+|--------|----------------------------------|----------------------------------|----------------|
+| **BioBridge** | {0.XXXX} | {0.XXXX} | {0.XXXX} |
+| **ULTRA** | {0.XXXX} | {0.XXXX} | {0.XXXX} |
+| **PrimeKG** | {0.XXXX} ({path_info}) | {0.XXXX} ({path_info}) | {0.XXXX} (avg) |
+
+**Verdict:** {1-2 sentence summary of overall support}
+```
+
+### pct_rank Source by Method
+
+| Method | Individual pct_rank Source | Combo pct_rank Source |
+|--------|---------------------------|----------------------|
+| BioBridge | `result['results'][0]['pct_rank']` | `result['results'][0]['pct_rank']` (mean embedding) |
+| ULTRA | `percentile_rank` column in parquet | `filtered_percentile_rank` from 2i query |
+| PrimeKG | `score = 0.9^(path_length-1)` | Average of component scores |
+
+---
+
 ## Part 1: Individual Entity Analysis Template
 
 ```markdown
@@ -545,7 +581,7 @@ This analysis reveals **{N} critical principles** for signature design:
 
 **Date**: {YYYY-MM-DD}
 **Methods Compared**: BioBridge (embeddings), ULTRA (intersection), PrimeKG (shortest path)
-**Analysis Type**: Comprehensive cross-method comparison
+**Analysis Type**: Comprehensive cross-method pct_rank comparison
 
 ---
 
@@ -555,26 +591,31 @@ This analysis reveals **{N} critical principles** for signature design:
 
 ---
 
-## SECTION A: Method Summaries
+## SECTION A: pct_rank Summary Tables (REQUIRED)
 
-### A1. BioBridge Summary
-{Part 1, 2, 3 key findings}
+### A1. Individual Target pct_rank Comparison
 
-### A2. ULTRA Summary
-{Part 1, 2, 3 key findings}
+| Disease | {Target1} BioBridge | {Target1} ULTRA | {Target1} PrimeKG | {Target2} BioBridge | {Target2} ULTRA | {Target2} PrimeKG |
+|---------|---------------------|-----------------|-------------------|---------------------|-----------------|-------------------|
+| {disease1} | **{pct_rank}** | **{pct_rank}** | **{pct_rank}** | **{pct_rank}** | **{pct_rank}** | **{pct_rank}** |
+| {disease2} | {pct_rank} | {pct_rank} | {pct_rank} | {pct_rank} | {pct_rank} | {pct_rank} |
 
-### A3. PrimeKG Summary
-{Part 1, 2, 3 key findings}
+### A2. Combo pct_rank Comparison
+
+| Disease | BioBridge Combo | ULTRA Combo (2i) | PrimeKG Combo (avg) |
+|---------|-----------------|------------------|---------------------|
+| {disease1} | **{pct_rank}** | **{pct_rank}** | **{pct_rank}** |
+| {disease2} | {pct_rank} | {pct_rank} | {pct_rank} |
 
 ---
 
-## SECTION B: Cross-Method Comparisons
+## SECTION B: Cross-Method Agreement Analysis
 
 ### B1. Individual Analysis Cross-Comparison
 
-| {entity2} | {entity1} | BioBridge | ULTRA | PrimeKG | Path | Agreement |
-|-----------|-----------|-----------|-------|---------|------|-----------|
-| {gene} | {disease} | {pct_rank} | {pct_rank} | {score} | {hops} | {HIGH/MOD/LOW} |
+| {entity2} | {entity1} | BioBridge pct_rank | ULTRA pct_rank | PrimeKG pct_rank | Path | Agreement |
+|-----------|-----------|-------------------|----------------|------------------|------|-----------|
+| {gene} | {disease} | {pct_rank} | {pct_rank} | {pct_rank} | {hops} | {HIGH/MOD/LOW} |
 {...}
 
 **Concordant Findings** (all 3 agree):
