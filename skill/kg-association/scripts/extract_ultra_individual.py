@@ -20,15 +20,15 @@ IMPORTANT: Native rank/percentile_rank are across ALL entity types.
            We MUST recalculate within target entity type (e.g., disease only).
 
 Usage:
-    python extract_ultra_individual.py --data-dir ./kgpred_IBD_2025-01-05/data/ultra/individual \\
+    python extract_ultra_individual.py --data-dir ./kgpred_IBD/ultra/individual \\
                                        --diseases "crohn,ulcerative colitis,inflammatory bowel disease" \\
-                                       --output ./kgpred_IBD_2025-01-05/data/ultra/individual_scores.json
+                                       --output ./kgpred_IBD/ultra/individual_scores.json
 
 Example:
     # From working directory with parquet files
-    python extract_ultra_individual.py --data-dir data/ultra/individual \\
+    python extract_ultra_individual.py --data-dir ultra/individual \\
                                        --diseases "crohn,ulcerative colitis,IBD" \\
-                                       --output data/ultra/scores.json
+                                       --output ultra/scores.json
 """
 
 import pandas as pd
@@ -177,16 +177,16 @@ if __name__ == "__main__":
         epilog="""
 Examples:
     # Basic usage
-    python extract_ultra_individual.py --data-dir data/ultra/individual \\
+    python extract_ultra_individual.py --data-dir ultra/individual \\
                                        --diseases "crohn,ulcerative colitis,IBD"
 
     # With output file
-    python extract_ultra_individual.py --data-dir data/ultra/individual \\
+    python extract_ultra_individual.py --data-dir ultra/individual \\
                                        --diseases "crohn,ulcerative colitis,IBD" \\
                                        --output results/scores.json
 
     # Different entity type
-    python extract_ultra_individual.py --data-dir data/ultra/individual \\
+    python extract_ultra_individual.py --data-dir ultra/individual \\
                                        --diseases "schizophrenia,depression" \\
                                        --entity-type disease
         """

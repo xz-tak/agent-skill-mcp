@@ -16,15 +16,15 @@ IMPORTANT: Native rank/percentile_rank are across ALL entity types.
            We MUST recalculate within target entity type (e.g., disease only).
 
 Usage:
-    python extract_ultra_combo.py --data-dir ./kgpred_IBD_2025-01-05/data/ultra/combo \\
+    python extract_ultra_combo.py --data-dir ./kgpred_IBD/ultra/combo \\
                                   --diseases "crohn,ulcerative colitis,inflammatory bowel disease" \\
-                                  --output ./kgpred_IBD_2025-01-05/data/ultra/combo_scores.json
+                                  --output ./kgpred_IBD/ultra/combo_scores.json
 
 Example:
     # From working directory with parquet files
-    python extract_ultra_combo.py --data-dir data/ultra/combo \\
+    python extract_ultra_combo.py --data-dir ultra/combo \\
                                   --diseases "crohn,ulcerative colitis,IBD" \\
-                                  --output data/ultra/combo_scores.json
+                                  --output ultra/combo_scores.json
 """
 
 import pandas as pd
@@ -203,11 +203,11 @@ if __name__ == "__main__":
         epilog="""
 Examples:
     # Basic usage
-    python extract_ultra_combo.py --data-dir data/ultra/combo \\
+    python extract_ultra_combo.py --data-dir ultra/combo \\
                                   --diseases "crohn,ulcerative colitis,IBD"
 
     # With output file
-    python extract_ultra_combo.py --data-dir data/ultra/combo \\
+    python extract_ultra_combo.py --data-dir ultra/combo \\
                                   --diseases "crohn,ulcerative colitis,IBD" \\
                                   --output results/combo_scores.json
         """

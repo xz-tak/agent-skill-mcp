@@ -15,7 +15,7 @@ Features:
 Usage:
     # From JSON results file with extended data
     pixi run python primekg_visualization.py \
-        --json-results ./kgpred_IBD/data/primekg/primekg_shortest_paths.json \
+        --json-results ./kgpred_IBD/primekg/primekg_shortest_paths.json \
         --output ./kgpred_IBD/primekg/network_visualization.html
 
     # For combo visualization with PPI data

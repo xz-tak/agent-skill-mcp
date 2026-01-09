@@ -94,7 +94,7 @@ import shutil
 from pathlib import Path
 
 working_dir = Path("./kgpred_IBD_2025-01-08")
-data_dir = working_dir / "data" / "ultra" / "individual"
+data_dir = working_dir / "ultra" / "individual"
 data_dir.mkdir(parents=True, exist_ok=True)
 
 results = {}
@@ -189,7 +189,7 @@ import shutil
 from pathlib import Path
 
 working_dir = Path("./kgpred_IBD_2025-01-08")
-data_dir = working_dir / "data" / "ultra" / "combo"
+data_dir = working_dir / "ultra" / "combo"
 data_dir.mkdir(parents=True, exist_ok=True)
 
 combo_results = {}
@@ -333,7 +333,7 @@ ULTRA analysis generates the following files in `<output_dir>/ultra/`:
 | `Part2_Combo_Analysis.md` | If combos provided | Intersection query scores with synergy/dilution |
 | `Part3_Comparative_Analysis.md` | If combos provided | Deep comparative analysis |
 
-Data files in `<output_dir>/data/ultra/`:
+Data files in `<output_dir>/ultra/`:
 
 | File Pattern | Contents |
 |--------------|----------|
@@ -351,7 +351,7 @@ Extract scores from individual gene prediction parquets:
 
 ```bash
 python scripts/extract_ultra_individual.py \
-    --data-dir ./kgpred_IBD/data/ultra/individual \
+    --data-dir ./kgpred_IBD/ultra/individual \
     --diseases "crohn,ulcerative colitis,IBD" \
     --output ./individual_scores.json
 ```
@@ -362,7 +362,7 @@ Extract scores from combo/intersection parquets:
 
 ```bash
 python scripts/extract_ultra_combo.py \
-    --data-dir ./kgpred_IBD/data/ultra/combo \
+    --data-dir ./kgpred_IBD/ultra/combo \
     --diseases "crohn,ulcerative colitis,IBD" \
     --output ./combo_scores.json
 ```
@@ -373,13 +373,13 @@ Utility functions for inspection and quick lookups:
 
 ```bash
 # Inspect structure
-python scripts/parquet_utils.py inspect data/ultra/TYK2_predictions.parquet
+python scripts/parquet_utils.py inspect ultra/TYK2_predictions.parquet
 
 # Search for disease
-python scripts/parquet_utils.py search data/ultra/TYK2_predictions.parquet "crohn"
+python scripts/parquet_utils.py search ultra/TYK2_predictions.parquet "crohn"
 
 # Get single score
-python scripts/parquet_utils.py score data/ultra/TYK2_predictions.parquet "crohn"
+python scripts/parquet_utils.py score ultra/TYK2_predictions.parquet "crohn"
 ```
 
 ---

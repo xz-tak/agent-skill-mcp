@@ -106,7 +106,7 @@ ELSE:
 ### Directory Layout
 
 ```
-kgpred_<context>_<date>/
+kgpred_<context_disease>/
 ├── KG_Association_Report.md           # Main report with pct_rank summary
 ├── biobridge/
 │   ├── Part1_Individual_Analysis.md
@@ -115,20 +115,16 @@ kgpred_<context>_<date>/
 ├── ultra/
 │   ├── Part1_Individual_Analysis.md
 │   ├── Part2_Combo_Analysis.md        # If combos provided
-│   └── Part3_Comparative_Analysis.md  # If combos provided
+│   ├── Part3_Comparative_Analysis.md  # If combos provided
+│   ├── individual/*.parquet           # Individual query results
+│   └── combo/*.parquet                # Combo query results
 ├── primekg/
 │   ├── Part1_Individual_Analysis.md
 │   ├── Part2_Combo_Analysis.md        # If combos provided
 │   ├── Part3_Comparative_Analysis.md  # If combos provided
 │   ├── {genes}_{disease}_network.html # Full interactive network (REQUIRED)
-│   └── {genes}_{disease}_subgraph.html # Per-combo subgraph (REQUIRED for combos)
-├── data/
-│   ├── biobridge/
-│   ├── ultra/
-│   │   ├── individual/*.parquet
-│   │   └── combo/*.parquet
-│   └── primekg/
-│       └── primekg_shortest_paths.json
+│   ├── {genes}_{disease}_subgraph.html # Per-combo subgraph (REQUIRED for combos)
+│   └── primekg_shortest_paths.json    # Shortest path data
 └── Cross_Method_Comparison.md
 ```
 
@@ -198,7 +194,7 @@ kgpred_<context>_<date>/
 ### Phase 0: Setup Output Directory
 
 ```bash
-mkdir -p ./kgpred_<context>_$(date +%Y-%m-%d)/{biobridge,ultra,primekg,data}
+mkdir -p ./kgpred_<context_disease>/{biobridge,ultra,primekg}
 ```
 
 ### Phase 1: Individual Analysis (All Methods)
@@ -320,18 +316,18 @@ for combo in combos:
 
 # 4. Run PrimeKG (see references/primekg_analysis.md)
 # Use MCP tools for shortest paths
-# Save results to data/primekg/primekg_shortest_paths.json
+# Save results to primekg/primekg_shortest_paths.json
 
 # 5. Generate PrimeKG visualizations (REQUIRED)
 # Full network:
 pixi run python scripts/primekg_visualization.py \
-    --json-results ./data/primekg/primekg_shortest_paths.json \
+    --json-results ./primekg/primekg_shortest_paths.json \
     --output ./primekg/TYK2_JAK1_IBD_network.html \
     --title "TYK2+JAK1 IBD Network"
 
 # Combo subgraph:
 pixi run python scripts/primekg_visualization.py \
-    --json-results ./data/primekg/primekg_shortest_paths.json \
+    --json-results ./primekg/primekg_shortest_paths.json \
     --combo "TYK2+JAK1" \
     --output ./primekg/TYK2_JAK1_IBD_subgraph.html
 

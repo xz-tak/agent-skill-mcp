@@ -383,7 +383,7 @@ For every kg-association analysis, generate:
 ```bash
 # Format: {genes}_{disease}_network.html
 pixi run python scripts/primekg_visualization.py \
-    --json-results ./kgpred_<context>/data/primekg/primekg_shortest_paths.json \
+    --json-results ./kgpred_<context>/primekg/primekg_shortest_paths.json \
     --output ./kgpred_<context>/primekg/{genes}_{disease}_network.html \
     --title "<Genes> <Disease> Network (PrimeKG)"
 ```
@@ -391,7 +391,7 @@ pixi run python scripts/primekg_visualization.py \
 Example:
 ```bash
 pixi run python scripts/primekg_visualization.py \
-    --json-results ./kgpred_IBD_bispecific/data/primekg/primekg_shortest_paths.json \
+    --json-results ./kgpred_IBD_bispecific/primekg/primekg_shortest_paths.json \
     --output ./kgpred_IBD_bispecific/primekg/TYK2_JAK1_IBD_network.html \
     --title "TYK2+JAK1 IBD Network (PrimeKG)"
 ```
@@ -401,7 +401,7 @@ pixi run python scripts/primekg_visualization.py \
 ```bash
 # Format: {genes}_{disease}_subgraph.html
 pixi run python scripts/primekg_visualization.py \
-    --json-results ./kgpred_<context>/data/primekg/primekg_shortest_paths.json \
+    --json-results ./kgpred_<context>/primekg/primekg_shortest_paths.json \
     --combo "TYK2+JAK1" \
     --output ./kgpred_<context>/primekg/TYK2_JAK1_IBD_subgraph.html
 ```
@@ -421,7 +421,7 @@ pixi run python scripts/primekg_visualization.py \
 ```
 1. Complete PrimeKG MCP queries
       ↓
-2. Save results to data/primekg/primekg_shortest_paths.json
+2. Save results to primekg/primekg_shortest_paths.json
       ↓
 3. Generate full network visualization
       ↓
@@ -588,7 +588,7 @@ TYK2 and JAK1 appear to influence IBD through overlapping JAK-STAT signaling:
 
 ## Output Files
 
-### Data Files (in `data/primekg/`)
+### Data Files (in `primekg/`)
 
 | File | Contents |
 |------|----------|
