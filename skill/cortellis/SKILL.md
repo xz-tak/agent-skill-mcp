@@ -1,6 +1,7 @@
 ---
 name: cortellis
 description: Unified toolkit for Cortellis Drug Discovery Intelligence + OFF-X: (1) build Excel→interactive CI dashboards with competition/opportunity scoring, (2) query targets/drugs via API for structured analysis, (3) automate web exports across Cortellis categories, and (4) export OFF-X safety evidence and adverse events.
+context: fork
 ---
 
 # Cortellis Intelligence Skill
@@ -219,25 +220,20 @@ Use this decision matrix to choose the appropriate method:
   ```
 - **Documentation:** See [`cortellis_api/API_ACCESS.md`](cortellis_api/API_ACCESS.md#prerequisites)
 
-### For Cortellis Target-Drug Web Automation
-- **Required:** Okta authentication session
-- **Setup:** Run once from working directory:
+### For Cortellis Target-Drug Web Automation & OFF-X Safety
+- **Required:** Okta authentication session at `~/.okta/auth_state.json`
+- **Setup:** Use the centralized `ai-sci:okta-sso` skill:
   ```bash
-  cd /your/working/directory
-  python /home/sagemaker-user/.claude/skills/cortellis/cortellis_targetdrug_web/okta_auth_setup.py
-  ```
-- Creates `okta_auth_state.json` (valid for weeks/months)
-- **Documentation:** See [`cortellis_targetdrug_web/WEB_AUTOMATION.md`](cortellis_targetdrug_web/WEB_AUTOMATION.md#prerequisites)
+  # Check session status
+  ~/ai-sci-claude-skills/ai-sci/skills/okta-sso/run-okta-login.sh --status
 
-### For OFF-X Safety Web Automation
-- **Required:** Okta authentication session (same as Cortellis)
-- **Setup:** Run once from working directory:
-  ```bash
-  cd /your/working/directory
-  python /home/sagemaker-user/.claude/skills/cortellis/offx_web/okta_auth_setup.py
+  # If invalid, authenticate (Claude cannot handle secrets - run this yourself):
+  OKTA_EMAIL="your.email@takeda.com" OKTA_PASSWORD="your-password" \
+    ~/ai-sci-claude-skills/ai-sci/skills/okta-sso/run-okta-login.sh
   ```
-- Creates `okta_auth_state.json` (valid for weeks/months)
-- **Documentation:** See [`offx_web/OFFX_AUTOMATION.md`](offx_web/OFFX_AUTOMATION.md#prerequisites)
+- Session saved to `~/.okta/auth_state.json` (valid for weeks/months)
+- **Shared:** Both Cortellis and OFF-X use the same centralized session
+- **Documentation:** See [`cortellis_targetdrug_web/WEB_AUTOMATION.md`](cortellis_targetdrug_web/WEB_AUTOMATION.md#prerequisites) or [`offx_web/OFFX_AUTOMATION.md`](offx_web/OFFX_AUTOMATION.md#prerequisites)
 
 ## Common Workflows
 

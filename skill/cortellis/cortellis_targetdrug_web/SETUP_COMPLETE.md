@@ -24,7 +24,6 @@ The Cortellis skill has been successfully updated with comprehensive web automat
 │       └── convert_excel_to_json.py
 └── cortellis_targetdrug_web/          # Target-Drug Web automation (Playwright)
     ├── README.md                      # Quick start guide
-    ├── okta_auth_setup.py             # Authentication setup
     ├── cortellis-automation.js        # Single-category export
     ├── cortellis-download.js          # Multi-category downloads
     ├── run-cortellis.sh               # Wrapper for automation
@@ -32,12 +31,15 @@ The Cortellis skill has been successfully updated with comprehensive web automat
     ├── example_clinical_studies.json  # Example config
     ├── example_comprehensive.json     # Example config
     └── example_patents.json           # Example config
+
+# Okta authentication handled by centralized skill:
+~/ai-sci-claude-skills/ai-sci/okta-sso/
 ```
 
 ### 2. Environment-Agnostic Execution
 
 ✅ Scripts now work from any directory
-✅ Auth file (`okta_auth_state.json`) read from working directory
+✅ Auth file read from centralized `~/.okta/auth_state.json`
 ✅ Results save to working directory in `cortellis_playwright_result/`
 
 ### 3. Enhanced Features
@@ -58,13 +60,15 @@ The Cortellis skill has been successfully updated with comprehensive web automat
 Results automatically organize:
 ```
 working_directory/
-├── okta_auth_state.json              # Your Okta session
 └── cortellis_playwright_result/
     └── {query}_{category}_{datetime}/
         ├── search_overview.png
         ├── {category}_page.png
         ├── {category}_data.xlsx
         └── metadata.json
+
+# Auth state is centralized at:
+~/.okta/auth_state.json
 ```
 
 ## 🚀 Quick Start
@@ -72,15 +76,14 @@ working_directory/
 ### Step 1: Setup Authentication (One-Time)
 
 ```bash
-cd /your/project/directory
-python /home/sagemaker-user/.claude/skills/cortellis/cortellis_targetdrug_web/okta_auth_setup.py
+~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh
 ```
 
-This creates `okta_auth_state.json` in your project directory.
+This creates `~/.okta/auth_state.json` shared by all Cortellis and OFF-X automation.
 
 ### Step 2: Run Searches
 
-**From any directory with the auth file:**
+**From any directory (auth is centralized):**
 
 ```bash
 # Single category export
@@ -174,14 +177,17 @@ cd /your/project
 ### Re-authentication
 If session expires (after weeks/months):
 ```bash
-cd /your/project
-python /home/sagemaker-user/.claude/skills/cortellis/cortellis_targetdrug_web/okta_auth_setup.py
+# Check session status
+~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh --status
+
+# Re-authenticate if needed
+~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh
 ```
 
 ### Troubleshooting
 - Check screenshots in output folders for debugging
 - Review `metadata.json` for error details
-- Ensure `okta_auth_state.json` exists in working directory
+- Ensure `~/.okta/auth_state.json` exists (run okta-sso skill if not)
 
 ## 🎉 Ready to Use!
 

@@ -1,13 +1,30 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 // Configuration
 const TARGET_URL = 'https://takeda.okta.com/';
 // Use environment variable if set (from shell script), otherwise use current working directory
 const WORK_DIR = process.env.CORTELLIS_WORK_DIR || process.cwd();
-const AUTH_STATE_PATH = path.join(WORK_DIR, 'okta_auth_state.json');
+// Centralized Okta auth state (managed by okta-sso skill)
+const AUTH_STATE_PATH = path.join(os.homedir(), '.okta', 'auth_state.json');
 const OUTPUT_DIR = path.join(WORK_DIR, 'cortellis_playwright_result');
+
+// Validate auth state exists before proceeding
+function validateAuthState() {
+  if (!fs.existsSync(AUTH_STATE_PATH)) {
+    console.error('');
+    console.error('❌ Okta session not found at ' + AUTH_STATE_PATH);
+    console.error('');
+    console.error('To authenticate, run:');
+    console.error('  ~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh');
+    console.error('');
+    console.error('Then retry this command.');
+    console.error('');
+    process.exit(1);
+  }
+}
 
 // Parse command line arguments
 function parseArgs() {
@@ -511,6 +528,9 @@ async function searchCortellis(cortellisPage, searchTerm, index, total, category
 
 // Main execution
 (async () => {
+  // Validate Okta session before starting
+  validateAuthState();
+
   const { searchTerms, category } = parseArgs();
   console.log(`\n🎯 Will search for ${searchTerms.length} term(s):`);
   searchTerms.forEach((term, i) => console.log(`   ${i + 1}. ${term}`));

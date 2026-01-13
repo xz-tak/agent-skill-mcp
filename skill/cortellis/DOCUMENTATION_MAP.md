@@ -98,7 +98,6 @@ Quick guide to navigate the Cortellis skill documentation.
     ├── 📄 WEB_AUTOMATION.md                 # ⭐ Complete web automation guide
     ├── 📄 SETUP_COMPLETE.md                 # Setup validation & test results
     ├── 📄 README.md                         # Quick reference
-    ├── 🔧 okta_auth_setup.py                # Auth setup script
     ├── 🔧 cortellis-automation.js           # Single-category script
     ├── 🔧 cortellis-download.js             # Multi-category script
     ├── 🔧 run-cortellis.sh                  # Wrapper for automation.js
@@ -107,6 +106,9 @@ Quick guide to navigate the Cortellis skill documentation.
         ├── example_clinical_studies.json
         ├── example_comprehensive.json
         └── example_patents.json
+
+# NOTE: Okta authentication handled by centralized skill:
+# ~/ai-sci-claude-skills/ai-sci/okta-sso/
 ```
 
 ## 🚦 Navigation Flow
@@ -153,9 +155,8 @@ cortellis_api/references/ (Detailed reference)
 ### Web Automation Setup
 
 ```bash
-# 1. Setup auth (one-time)
-cd /your/project/directory
-python /home/sagemaker-user/.claude/skills/cortellis/cortellis_targetdrug_web/okta_auth_setup.py
+# 1. Setup auth (one-time) - uses centralized okta-sso skill
+~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh
 
 # 2. Run search
 /home/sagemaker-user/.claude/skills/cortellis/cortellis_targetdrug_web/run-cortellis-download.sh \

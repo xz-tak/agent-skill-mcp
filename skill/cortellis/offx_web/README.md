@@ -9,9 +9,8 @@ Evaluate target and drug safety and identify adverse events using OFF-X database
 ## Quick Start
 
 ```bash
-# 1. One-time authentication setup
-cd /your/working/directory
-python /home/sagemaker-user/.claude/skills/cortellis/offx_web/okta_auth_setup.py
+# 1. One-time authentication setup (uses centralized okta-sso skill)
+~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh
 
 # 2. Run safety assessment
 /home/sagemaker-user/.claude/skills/cortellis/offx_web/run-offx-download.sh itga4
@@ -79,8 +78,9 @@ Located in `example/` directory:
 
 ### Authentication Expired
 ```bash
-cd /your/working/directory
-python /home/sagemaker-user/.claude/skills/cortellis/offx_web/okta_auth_setup.py
+# Check status and re-authenticate
+~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh --status
+~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh
 ```
 
 ### Debug Issues

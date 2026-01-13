@@ -1,14 +1,31 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 // Configuration
 const TARGET_URL = 'https://takeda.okta.com/';
 // Use environment variable if set (from shell script), otherwise use current working directory
 const WORK_DIR = process.env.OFFX_WORK_DIR || process.cwd();
-const AUTH_STATE_PATH = path.join(WORK_DIR, 'okta_auth_state.json');
+// Centralized Okta auth state (managed by okta-sso skill)
+const AUTH_STATE_PATH = path.join(os.homedir(), '.okta', 'auth_state.json');
 const OUTPUT_DIR = path.join(WORK_DIR, 'offx_playwright_result');
 const DEFAULT_FIELD = 'Targets';
+
+// Validate auth state exists before proceeding
+function validateAuthState() {
+  if (!fs.existsSync(AUTH_STATE_PATH)) {
+    console.error('');
+    console.error('❌ Okta session not found at ' + AUTH_STATE_PATH);
+    console.error('');
+    console.error('To authenticate, run:');
+    console.error('  ~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh');
+    console.error('');
+    console.error('Then retry this command.');
+    console.error('');
+    process.exit(1);
+  }
+}
 
 // Available fields in off-x
 const AVAILABLE_FIELDS = [
@@ -1284,6 +1301,9 @@ async function processEntity(offxPage, entityConfig, index, total) {
 
 // Main execution
 (async () => {
+  // Validate Okta session before starting
+  validateAuthState();
+
   const entityConfigs = parseArgs();
   console.log(`\n🎯 Will process ${entityConfigs.length} entit(ies):`);
   entityConfigs.forEach((config, i) => {

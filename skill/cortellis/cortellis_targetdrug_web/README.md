@@ -13,11 +13,10 @@ Browser-based automation for downloading target-drug relationship data from Cort
 ### 1. Setup Authentication (One-time)
 
 ```bash
-cd /home/sagemaker-user/.claude/skills/cortellis/cortellis_targetdrug_web
-python okta_auth_setup.py
+~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh
 ```
 
-Follow prompts to save your Okta session. Creates `okta_auth_state.json` in your working directory.
+Follow prompts to save your Okta session. Creates `~/.okta/auth_state.json` (shared by all Cortellis/OFF-X automation).
 
 ### 2. Run Searches
 
@@ -184,17 +183,16 @@ working_directory/cortellis_playwright_result/
 
 ### Authentication Errors
 
-**Error: "okta_auth_state.json not found"**
+**Error: "Okta session not found"**
 ```bash
-# Run in working directory where you want results
-cd /path/to/your/project
-python /home/sagemaker-user/.claude/skills/cortellis/cortellis_targetdrug_web/okta_auth_setup.py
+# Run the okta-sso skill to authenticate
+~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh
 ```
 
 **Error: "Authentication expired"**
 ```bash
 # Session expired (happens after weeks/months)
-python okta_auth_setup.py  # Re-authenticate
+~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh  # Re-authenticate
 ```
 
 ### Download Issues
@@ -242,7 +240,6 @@ chmod +x *.sh
 ```
 cortellis_targetdrug_web/
 ├── README.md                          # This file
-├── okta_auth_setup.py                 # Authentication setup
 ├── cortellis-automation.js            # Single-category script
 ├── cortellis-download.js              # Multi-category script
 ├── run-cortellis.sh                   # Wrapper for automation
@@ -250,13 +247,16 @@ cortellis_targetdrug_web/
 ├── example_clinical_studies.json      # Example config
 ├── example_comprehensive.json         # Example config
 └── example_patents.json               # Example config
+
+# Okta auth handled by centralized skill:
+~/ai-sci-claude-skills/ai-sci/okta-sso/
 ```
 
 ## Quick Command Reference
 
 ```bash
-# Setup (one-time)
-python okta_auth_setup.py
+# Setup (one-time) - uses centralized okta-sso skill
+~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh
 
 # Single category
 ./run-cortellis.sh DRUG --category "Category"

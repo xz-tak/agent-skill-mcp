@@ -32,28 +32,29 @@ Web automation uses Playwright browser automation to:
 
 **IMPORTANT: Okta Authentication Required**
 
-Web automation requires a saved Okta session. This is a one-time setup that saves browser authentication state.
+Web automation requires a saved Okta session at `~/.okta/auth_state.json`. Use the centralized `ai-sci:okta-sso` skill for authentication.
 
 ### Initial Setup
 
-1. **Run the authentication script from your working directory** (one-time):
+1. **Check if you have a valid session:**
 ```bash
-# Navigate to your project/working directory first
-cd /your/project/directory
-
-# Run auth setup from there
-python /home/sagemaker-user/.claude/skills/cortellis/cortellis_targetdrug_web/okta_auth_setup.py
+~/ai-sci-claude-skills/ai-sci/skills/okta-sso/run-okta-login.sh --status
 ```
 
-2. **Follow prompts**:
-   - Enter your Takeda email
-   - Enter your password
-   - Complete MFA (enter code from authenticator app)
+2. **If no valid session, authenticate using the okta-sso skill:**
 
-3. **Session saved**: Creates `okta_auth_state.json` in your working directory
+   **Note:** Claude cannot handle secrets interactively. Run this command yourself in your terminal:
+   ```bash
+   OKTA_EMAIL="your.email@takeda.com" OKTA_PASSWORD="your-password" \
+     ~/ai-sci-claude-skills/ai-sci/skills/okta-sso/run-okta-login.sh
+   ```
+
+3. **Complete MFA**: Approve the push notification on your phone (match the verification number displayed)
+
+4. **Session saved**: Creates `~/.okta/auth_state.json`
    - Valid for weeks/months
-   - Rerun script when session expires
-   - File must be in the directory where you run the automation scripts
+   - Centralized location shared by all Cortellis and OFF-X scripts
+   - Rerun okta-sso skill when session expires
 
 ## When to Use Target-Drug Web Automation
 
@@ -299,19 +300,14 @@ cortellis_playwright_result/
 
 ### Authentication Issues
 
-**Error: "okta_auth_state.json not found"**
+**Error: "Authentication file not found" or "Session expired"**
 ```bash
-# Run setup from your working directory (where you want results saved)
-cd /your/working/directory
-python /home/sagemaker-user/.claude/skills/cortellis/cortellis_targetdrug_web/okta_auth_setup.py
-```
+# Check session status
+~/ai-sci-claude-skills/ai-sci/skills/okta-sso/run-okta-login.sh --status
 
-**Error: "Authentication expired"**
-- Session cookies have expired (typically after weeks/months)
-- Re-run auth setup from your working directory:
-```bash
-cd /your/working/directory
-python /home/sagemaker-user/.claude/skills/cortellis/cortellis_targetdrug_web/okta_auth_setup.py
+# If invalid, re-authenticate (run this yourself - Claude cannot handle secrets):
+OKTA_EMAIL="your.email@takeda.com" OKTA_PASSWORD="your-password" \
+  ~/ai-sci-claude-skills/ai-sci/skills/okta-sso/run-okta-login.sh
 ```
 
 ### Download Issues

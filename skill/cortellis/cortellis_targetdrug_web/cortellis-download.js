@@ -1,14 +1,31 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
 // Configuration
 const TARGET_URL = 'https://takeda.okta.com/';
 // Use environment variable if set (from shell script), otherwise use current working directory
 const WORK_DIR = process.env.CORTELLIS_WORK_DIR || process.cwd();
-const AUTH_STATE_PATH = path.join(WORK_DIR, 'okta_auth_state.json');
+// Centralized Okta auth state (managed by okta-sso skill)
+const AUTH_STATE_PATH = path.join(os.homedir(), '.okta', 'auth_state.json');
 const OUTPUT_DIR = path.join(WORK_DIR, 'cortellis_playwright_result');
 const DEFAULT_CATEGORY = 'Drugs & Biologics';
+
+// Validate auth state exists before proceeding
+function validateAuthState() {
+  if (!fs.existsSync(AUTH_STATE_PATH)) {
+    console.error('');
+    console.error('❌ Okta session not found at ' + AUTH_STATE_PATH);
+    console.error('');
+    console.error('To authenticate, run:');
+    console.error('  ~/ai-sci-claude-skills/ai-sci/okta-sso/run-okta-login.sh');
+    console.error('');
+    console.error('Then retry this command.');
+    console.error('');
+    process.exit(1);
+  }
+}
 
 // Parse command line arguments
 function parseArgs() {
@@ -495,8 +512,11 @@ async function processSearch(cortellisPage, searchConfig, index, total) {
     return { success: false, ...results };
   }
 
-  // Perform search
-  await searchInput.click();
+  // Dismiss any overlay before searching
+  await dismissCdkOverlay(cortellisPage);
+
+  // Perform search (use force: true to bypass any remaining overlays)
+  await searchInput.click({ force: true });
   await searchInput.fill('');
   await cortellisPage.waitForTimeout(500);
   await searchInput.fill(searchTerm);
@@ -562,8 +582,77 @@ async function processSearch(cortellisPage, searchConfig, index, total) {
   return { success: true, ...results };
 }
 
+// Helper function to dismiss CDK overlays (Angular Material modals, welcome dialogs, etc.)
+async function dismissCdkOverlay(page) {
+  try {
+    // Wait a moment for any overlays to appear
+    await page.waitForTimeout(1000);
+
+    // Check for CDK overlay backdrop
+    const overlayBackdrop = await page.$('.cdk-overlay-backdrop');
+    if (overlayBackdrop && await overlayBackdrop.isVisible({ timeout: 1000 })) {
+      console.log('🔍 CDK overlay detected, attempting to dismiss...');
+
+      // Try multiple strategies to dismiss the overlay
+
+      // Strategy 1: Click any close button in the overlay container
+      const closeSelectors = [
+        '.cdk-overlay-pane button[aria-label*="close" i]',
+        '.cdk-overlay-pane button[aria-label*="dismiss" i]',
+        '.cdk-overlay-pane [class*="close"]',
+        '.cdk-overlay-pane button:has-text("Close")',
+        '.cdk-overlay-pane button:has-text("OK")',
+        '.cdk-overlay-pane button:has-text("Got it")',
+        '.cdk-overlay-pane button:has-text("Skip")',
+        '.cdk-overlay-pane button:has-text("Dismiss")',
+        '.mat-dialog-actions button',
+        '.mat-mdc-dialog-actions button'
+      ];
+
+      for (const selector of closeSelectors) {
+        try {
+          const closeBtn = await page.$(selector);
+          if (closeBtn && await closeBtn.isVisible({ timeout: 500 })) {
+            await closeBtn.click({ force: true });
+            console.log(`✅ Dismissed CDK overlay using: ${selector}`);
+            await page.waitForTimeout(1000);
+            return;
+          }
+        } catch (e) {
+          // Try next selector
+        }
+      }
+
+      // Strategy 2: Press Escape key to close modal
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(500);
+
+      // Check if overlay is gone
+      const overlayStillVisible = await page.$('.cdk-overlay-backdrop.cdk-overlay-backdrop-showing');
+      if (!overlayStillVisible || !await overlayStillVisible.isVisible({ timeout: 500 })) {
+        console.log('✅ CDK overlay dismissed with ESC key');
+        return;
+      }
+
+      // Strategy 3: Click outside the modal (on the backdrop)
+      try {
+        await overlayBackdrop.click({ force: true });
+        console.log('✅ CDK overlay dismissed by clicking backdrop');
+        await page.waitForTimeout(500);
+      } catch (e) {
+        // Continue
+      }
+    }
+  } catch (e) {
+    // No overlay to dismiss or error occurred
+  }
+}
+
 // Main execution
 (async () => {
+  // Validate Okta session before starting
+  validateAuthState();
+
   const searchConfigs = parseArgs();
   console.log(`\n🎯 Will process ${searchConfigs.length} search(es):`);
   searchConfigs.forEach((config, i) => {
@@ -671,6 +760,9 @@ async function processSearch(cortellisPage, searchConfig, index, total) {
     } catch (e) {
       // No cookie banner
     }
+
+    // Dismiss any CDK overlay that might be blocking (welcome modals, etc.)
+    await dismissCdkOverlay(cortellisPage);
 
     // Process each search
     const allResults = [];
