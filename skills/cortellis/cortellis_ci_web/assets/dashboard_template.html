@@ -1,0 +1,1885 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Competitive Intelligence Dashboard — Interactive Snapshot</title>
+  <style>
+    :root{
+      --bg0:#070a10;
+      --bg1:#0a0f1a;
+      --card:#0c1424;
+      --card2:#0b1220;
+      --stroke:rgba(255,255,255,.09);
+      --ink:#eaf1ff;
+      --muted:#a9b7cf;
+      --faint:#6f809e;
+      --accent:#8fffb8;
+      --accent2:#8bd3ff;
+      --warn:#ffd38b;
+      --danger:#ff7e7e;
+      --radius:18px;
+      --radius2:12px;
+      --shadow: 0 16px 40px rgba(0,0,0,.45);
+      --shadow2: 0 10px 30px rgba(0,0,0,.35);
+    }
+
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      color:var(--ink);
+      background:
+        radial-gradient(1400px 900px at 18% 10%, rgba(143,255,184,.10), transparent 60%),
+        radial-gradient(1200px 900px at 85% 18%, rgba(139,211,255,.11), transparent 55%),
+        radial-gradient(900px 700px at 70% 90%, rgba(255,211,139,.08), transparent 60%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+      line-height:1.45;
+      overflow-x:hidden;
+    }
+
+    .grain{
+      pointer-events:none;
+      position:fixed; inset:0;
+      opacity:.10;
+      mix-blend-mode: overlay;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='260'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='260' height='260' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+    }
+
+    header{
+      position:sticky; top:0; z-index:20;
+      backdrop-filter: blur(10px);
+      background: linear-gradient(180deg, rgba(7,10,16,.86), rgba(7,10,16,.55));
+      border-bottom:1px solid var(--stroke);
+    }
+
+    .wrap{ max-width: 1220px; margin:0 auto; padding: 18px 18px 16px; }
+
+    .title{
+      display:flex; align-items:flex-end; justify-content:space-between; gap:16px;
+    }
+
+    .title h1{
+      margin:0;
+      font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+      letter-spacing:-0.02em;
+      font-weight: 650;
+      font-size: clamp(22px, 3.1vw, 34px);
+    }
+    .subtitle{
+      margin-top:6px;
+      color:var(--muted);
+      font-size: 13px;
+    }
+
+    .metaLine{
+      display:flex; flex-wrap:wrap; gap:10px; justify-content:flex-end; align-items:center;
+      color:var(--muted);
+      font-size:12px;
+    }
+
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      border:1px solid var(--stroke);
+      background: rgba(12,20,36,.55);
+      padding:8px 10px;
+      border-radius: 999px;
+      box-shadow: var(--shadow2);
+    }
+    .dot{ width:8px; height:8px; border-radius:999px; background:var(--accent); box-shadow: 0 0 0 4px rgba(143,255,184,.14); }
+
+    main{ padding: 18px 0 54px; }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap:14px;
+      margin-top:14px;
+    }
+
+    @media (max-width: 980px){
+      .grid{ grid-template-columns: 1fr; }
+    }
+
+    .card{
+      background: linear-gradient(180deg, rgba(12,20,36,.86), rgba(11,18,32,.78));
+      border: 1px solid var(--stroke);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+
+    .card .hd{
+      padding: 14px 14px 10px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+
+    .card .hd h2{
+      margin:0;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing:.12em;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .card .bd{ padding: 14px; }
+
+    .kpis{
+      display:grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap:10px;
+    }
+
+    @media (max-width: 980px){
+      .kpis{ grid-template-columns: repeat(3, 1fr); }
+    }
+
+    @media (max-width: 560px){
+      .kpis{ grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .kpi{
+      background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 14px;
+      padding: 12px;
+      min-height: 86px;
+    }
+
+    .kpi .label{ color: var(--faint); font-size: 12px; letter-spacing:.08em; text-transform: uppercase; }
+    .kpi .val{ margin-top:8px; font-size: 24px; font-weight: 740; letter-spacing:-.02em; }
+    .kpi .sub{ margin-top:3px; color: var(--muted); font-size: 12px; }
+
+    .controls{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:10px;
+    }
+
+    .controls .search{
+      flex: 1 1 320px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.09);
+      border-radius: 999px;
+      padding: 10px 12px;
+    }
+
+    .controls input{
+      width:100%;
+      background:transparent;
+      border:none;
+      outline:none;
+      color:var(--ink);
+      font-size: 15px;
+    }
+
+    .seg{
+      display:inline-flex;
+      border:1px solid rgba(255,255,255,.10);
+      border-radius: 999px;
+      overflow:hidden;
+      background: rgba(255,255,255,.03);
+    }
+
+    .seg button{
+      border:none;
+      background: transparent;
+      color: var(--muted);
+      padding: 9px 12px;
+      font-size: 12px;
+      letter-spacing:.08em;
+      text-transform: uppercase;
+      cursor:pointer;
+    }
+
+    .seg button.active{
+      color: #071014;
+      background: linear-gradient(180deg, rgba(143,255,184,1), rgba(143,255,184,.78));
+      font-weight: 800;
+    }
+
+    details.filter{
+      position:relative;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+      border-radius: 12px;
+      padding: 0;
+      overflow:hidden;
+    }
+
+    details.filter summary{
+      list-style:none;
+      cursor:pointer;
+      padding: 10px 12px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing:.08em;
+      text-transform: uppercase;
+      user-select:none;
+    }
+    details.filter summary::-webkit-details-marker{ display:none; }
+
+    details.filter .panel{
+      padding: 10px 12px 12px;
+      border-top: 1px solid rgba(255,255,255,.08);
+      max-height: 240px;
+      overflow:auto;
+    }
+
+    .chk{
+      display:flex; align-items:center; gap:10px;
+      padding: 7px 0;
+      color: var(--ink);
+      font-size: 13px;
+    }
+
+    .chk input{ width: 15px; height: 15px; }
+    .muted{ color: var(--muted); }
+
+    .btn{
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+      color: var(--ink);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 12px;
+      letter-spacing:.08em;
+      text-transform: uppercase;
+      cursor:pointer;
+    }
+
+    .btn.primary{
+      border-color: rgba(143,255,184,.25);
+      background: rgba(143,255,184,.12);
+    }
+
+    .btn:hover{ filter: brightness(1.08); }
+
+    .select{
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.03);
+      color: var(--ink);
+      border-radius: 12px;
+      padding: 9px 10px;
+      font-size: 12px;
+      letter-spacing:.06em;
+      text-transform: uppercase;
+      outline:none;
+      cursor:pointer;
+    }
+
+    .select option{
+      background: #0b1220;
+      color: var(--ink);
+    }
+
+    .miniLegend{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px 10px;
+      align-items:center;
+      color: var(--muted);
+      font-size:12px;
+    }
+
+    .miniLegend .sw{
+      width:10px;
+      height:10px;
+      border-radius:999px;
+      display:inline-block;
+      border: 1px solid rgba(255,255,255,.20);
+      margin-right:6px;
+      vertical-align:middle;
+    }
+
+    .twoCol{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:14px;
+      margin-top:14px;
+    }
+    .card.compact .bd{ padding: 10px 12px; }
+
+    .chart{
+      width:100%;
+      height: 240px;
+    }
+
+    .chart svg{ width:100%; height:100%; }
+
+    .tableWrap{
+      margin-top:14px;
+    }
+
+    .tableScroll{
+      max-height: 560px;
+      overflow:auto;
+    }
+
+    table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+    }
+
+    thead th{
+      position:sticky;
+      top:0;
+      z-index: 10;
+      background: rgba(10,15,26,.88);
+      backdrop-filter: blur(10px);
+      text-align:left;
+      padding: 10px 10px;
+      font-size: 11px;
+      letter-spacing:.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+
+    tbody td{
+      padding: 11px 10px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      vertical-align: top;
+      font-size: 13px;
+      color: var(--ink);
+    }
+
+    tbody tr{ cursor:pointer; }
+    tbody tr:hover{ background: rgba(255,255,255,.03); }
+
+    .tag{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.03);
+      color: var(--ink);
+      font-size: 12px;
+      margin: 0 6px 6px 0;
+      white-space: nowrap;
+    }
+
+    .tag.phase{ border-color: rgba(139,211,255,.24); background: rgba(139,211,255,.10); }
+    .tag.accent{ border-color: rgba(143,255,184,.25); background: rgba(143,255,184,.10); }
+    .tag.warn{ border-color: rgba(255,211,139,.26); background: rgba(255,211,139,.10); }
+
+    .nowrap{ white-space:nowrap; }
+    .small{ font-size: 12px; color: var(--muted); }
+
+    .drawer{
+      position:fixed;
+      top:0;
+      right:0;
+      width: min(520px, 92vw);
+      height: 100vh;
+      transform: translateX(110%);
+      transition: transform .18s ease;
+      z-index: 50;
+      background: linear-gradient(180deg, rgba(12,20,36,.97), rgba(8,12,20,.96));
+      border-left: 1px solid rgba(255,255,255,.10);
+      box-shadow: -20px 0 50px rgba(0,0,0,.55);
+      overflow:auto;
+    }
+    .drawer.open{ transform: translateX(0); }
+
+    .drawer .top{
+      position:sticky; top:0;
+      background: rgba(8,12,20,.86);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      padding: 14px;
+      display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+    }
+
+    .drawer h3{ margin:0; font-size: 18px; font-family: ui-serif, "Iowan Old Style", Palatino, serif; letter-spacing:-.02em; }
+
+    .drawer .close{
+      border:none;
+      background: rgba(255,255,255,.06);
+      color: var(--ink);
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 12px;
+      padding: 10px 11px;
+      cursor:pointer;
+    }
+
+    .drawer .content{ padding: 14px; }
+
+    .kv{ margin: 10px 0 14px; }
+    .kv .k{ color: var(--faint); font-size: 12px; letter-spacing:.08em; text-transform: uppercase; }
+    .kv .v{ margin-top:6px; color: var(--ink); font-size: 14px; white-space: pre-wrap; }
+
+    .oppTableWrap{
+      margin-top: 10px;
+      border-top: 1px solid rgba(255,255,255,.08);
+      max-height: 320px;
+      overflow: auto;
+    }
+    .oppTable{
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    .oppTable thead th{
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(10,15,26,.92);
+      backdrop-filter: blur(10px);
+      text-align: left;
+      padding: 10px 10px;
+      font-size: 11px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      white-space: nowrap;
+    }
+    .oppTable tbody td{
+      padding: 10px 10px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      vertical-align: top;
+      font-size: 13px;
+      color: var(--ink);
+    }
+    .oppRow{ cursor: pointer; }
+    .oppRow:hover{ background: rgba(255,255,255,.03); }
+    .oppSummary{
+      color: rgba(233,241,255,.78);
+      max-width: 560px;
+    }
+    .mono{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      white-space: pre-wrap;
+    }
+
+    .foot{
+      margin-top: 12px;
+      color: var(--faint);
+      font-size: 12px;
+    }
+
+    .toast{
+      position: fixed;
+      left: 18px;
+      bottom: 18px;
+      z-index: 60;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(8,12,20,.75);
+      backdrop-filter: blur(10px);
+      color: var(--muted);
+      opacity:0;
+      transform: translateY(10px);
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    .toast.show{ opacity:1; transform: translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="grain"></div>
+
+  <header>
+    <div class="wrap">
+      <div class="title">
+        <div>
+          <h1>Competitive Intelligence Dashboard</h1>
+          <div class="subtitle">Interactive, single-file dashboard built from <span class="nowrap" id="srcFile"></span> • If you see a blank page, open in a real browser (not an editor preview) and allow JavaScript.</div>
+        </div>
+        <div class="metaLine">
+          <span class="pill"><span class="dot"></span> Filterable pipeline + target/MoA view</span>
+          <span class="pill">Generated <span id="genAt"></span></span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div class="wrap">
+
+      <div class="card">
+        <div class="hd">
+          <h2>High-Level Summary</h2>
+          <div class="controls">
+            <div class="seg" role="tablist" aria-label="Phase mode">
+              <button id="modeIbd" class="active" type="button">Context phase</button>
+              <button id="modeOverall" type="button">Overall phase</button>
+            </div>
+            <button id="reset" class="btn" type="button">Reset</button>
+            <button id="export" class="btn primary" type="button">Export CSV</button>
+          </div>
+        </div>
+        <div class="bd">
+          <div class="kpis" id="kpis"></div>
+          <div class="foot" id="phaseNote"></div>
+        </div>
+      </div>
+
+      <div class="twoCol">
+	        <div class="card compact">
+	          <div class="hd">
+	            <h2>Explore &amp; Filter</h2>
+	            <div class="muted" id="matchCount"></div>
+	          </div>
+          <div class="bd">
+            <div class="controls" style="gap:10px;">
+              <div class="search" style="flex: 1 1 420px;">
+                <span class="muted" style="font-size:12px; letter-spacing:.08em; text-transform:uppercase;">Search</span>
+                <input id="q" type="text" placeholder="name, target, family, organization, mechanism…" />
+              </div>
+              <details class="filter" id="fPhase">
+                <summary>Phase <span class="muted" id="fPhaseCount"></span></summary>
+                <div class="panel" id="fPhasePanel"></div>
+              </details>
+              <details class="filter" id="fMod">
+                <summary>Modality <span class="muted" id="fModCount"></span></summary>
+                <div class="panel" id="fModPanel"></div>
+              </details>
+              <details class="filter" id="fFam">
+                <summary>Target family <span class="muted" id="fFamCount"></span></summary>
+                <div class="panel" id="fFamPanel"></div>
+              </details>
+              <details class="filter" id="fSuperFam">
+                <summary>Target Type <span class="muted" id="fSuperFamCount"></span></summary>
+                <div class="panel" id="fSuperFamPanel"></div>
+              </details>
+              <details class="filter" id="fTarget">
+                <summary>Target <span class="muted" id="fTargetCount"></span></summary>
+                <div class="panel" id="fTargetPanel"></div>
+              </details>
+              <details class="filter" id="fMoA">
+                <summary>MoA class <span class="muted" id="fMoACount"></span></summary>
+                <div class="panel" id="fMoAPanel"></div>
+              </details>
+              <details class="filter" id="fTag">
+                <summary>Indication tag <span class="muted" id="fTagCount"></span></summary>
+                <div class="panel" id="fTagPanel"></div>
+              </details>
+              <details class="filter" id="fRoute">
+                <summary>Route <span class="muted" id="fRouteCount"></span></summary>
+                <div class="panel" id="fRoutePanel"></div>
+              </details>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="hd">
+            <h2>Opportunity Lens</h2>
+            <div class="muted">Heuristic signals, not advice</div>
+          </div>
+          <div class="bd">
+            <div class="controls" style="gap:10px; justify-content:space-between;">
+              <div class="controls" style="gap:8px;">
+                <select id="oppGroup" class="select" aria-label="Opportunity grouping">
+                  <option value="family">Target family</option>
+                  <option value="superfamily">Target type</option>
+                  <option value="target">Target</option>
+                  <option value="modality">Modality</option>
+                  <option value="route">Route</option>
+                  <option value="moa">MoA class</option>
+                </select>
+                <select id="oppMetric" class="select" aria-label="Opportunity metric">
+                  <option value="lateStageRate">Late-stage rate</option>
+                  <option value="marketedRate">Marketed rate</option>
+                  <option value="clinicalEntryRate">Clinical entry rate</option>
+                </select>
+              </div>
+              <div class="miniLegend" id="oppLegend"></div>
+            </div>
+            <div class="chart" id="oppPlot" style="margin-top:10px; height:260px;"></div>
+            <div id="insights" style="margin-top:10px;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="hd"><h2>Phase Distribution</h2><div class="muted">Click bars to filter</div></div>
+          <div class="bd"><div class="chart" id="chartPhase"></div></div>
+        </div>
+        <div class="card">
+          <div class="hd"><h2>Modality Mix</h2><div class="muted">Top-level bucket</div></div>
+          <div class="bd"><div class="chart" id="chartMod"></div></div>
+        </div>
+        <div class="card">
+          <div class="hd"><h2>Top Target Families</h2><div class="muted">Primary family per asset</div></div>
+          <div class="bd"><div class="chart" id="chartFam"></div></div>
+        </div>
+        <div class="card">
+          <div class="hd"><h2>Administration Routes</h2><div class="muted">From dev-status rows</div></div>
+          <div class="bd"><div class="chart" id="chartRoute"></div></div>
+        </div>
+        <div class="card">
+          <div class="hd"><h2>Focus tags</h2><div class="muted">configurable tag mapping</div></div>
+          <div class="bd"><div class="chart" id="chartTag"></div></div>
+        </div>
+        <div class="card">
+          <div class="hd"><h2>Target Types</h2><div class="muted">Cytokine vs kinase vs GPCR…</div></div>
+          <div class="bd"><div class="chart" id="chartSuperFam"></div></div>
+        </div>
+        <div class="card">
+          <div class="hd"><h2>Top Targets</h2><div class="muted">Primary target per asset</div></div>
+          <div class="bd"><div class="chart" id="chartTarget"></div></div>
+        </div>
+        <div class="card">
+          <div class="hd"><h2>Top Organizations</h2><div class="muted">Count by listed org string</div></div>
+          <div class="bd"><div class="chart" id="chartOrg"></div></div>
+        </div>
+        <div class="card">
+          <div class="hd"><h2>Late-Stage By Family</h2><div class="muted">Marketed/Registered/Phase III</div></div>
+          <div class="bd"><div class="chart" id="chartLateFam"></div></div>
+        </div>
+      </div>
+
+      <div class="card tableWrap">
+        <div class="hd">
+          <h2>Assets (click a row for details)</h2>
+          <div class="muted">Showing <span id="showing"></span></div>
+        </div>
+        <div class="bd" style="padding:0;">
+          <div class="tableScroll">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 16%;">Asset</th>
+                <th style="width: 16%;">Organization</th>
+                <th style="width: 10%;">Modality</th>
+                <th style="width: 10%;">Phase</th>
+                <th style="width: 12%;">Family</th>
+                <th style="width: 18%;">Targets</th>
+                <th style="width: 10%;">Focus tags</th>
+                <th style="width: 8%;">Route</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="foot" style="margin-top:10px;">
+        Notes: This dashboard is a convenience layer on top of the spreadsheet. In multi-indication assets, the “Overall phase” may reflect non-context approvals; use “Context phase” for context-specific maturity.
+      </div>
+
+    </div>
+  </main>
+
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <div class="top">
+      <div>
+        <h3 id="dTitle">Asset</h3>
+        <div class="small" id="dSub"></div>
+      </div>
+      <button class="close" id="dClose" type="button">Close</button>
+    </div>
+    <div class="content" id="dBody"></div>
+  </aside>
+
+  <div class="toast" id="toast"></div>
+
+  <script id="data" type="application/json">__PAYLOAD__</script>
+  <script>
+    const DATA = JSON.parse(document.getElementById('data').textContent);
+
+    const nf = new Intl.NumberFormat(undefined);
+
+	    const PHASE_ORDER = DATA.vocab.phaseOrder.slice();
+	    const PHASE_RANK = new Map(PHASE_ORDER.map((p,i)=>[p,i]));
+	    const PHASE_ORDER_DISPLAY = [...PHASE_ORDER].reverse();
+	    const LATE = new Set(['Marketed','Registered','Pre-registered','Phase III']);
+	    let OPP_MAP = new Map();
+
+    function deriveMoAClass(r){
+      const blob = [
+        r.modality,
+        r.targetFamilyPrimary,
+        r.mechanismOfAction,
+        r.molecularMechanism,
+        r.cellularMechanism,
+        (r.targets || []).join(' ')
+      ].join(' ').toLowerCase();
+
+      if ((r.modality || '').toLowerCase().includes('cell')) return 'Cell therapy';
+      if ((r.modality || '').toLowerCase().includes('microbiome')) return 'Microbiome / LBT';
+      if (blob.includes('anti-') || blob.includes('anti ')) return 'Neutralizing antibody';
+      if (blob.includes('monoclonal') || blob.includes('antibody')) return 'Antibody (other)';
+      if (blob.includes('inhibitor')) return 'Inhibitor';
+      if (blob.includes('antagonist') || blob.includes('blocker')) return 'Antagonist';
+      if (blob.includes('agonist') || blob.includes('partial agonist')) return 'Agonist';
+      if (blob.includes('modulator') || blob.includes('modulation')) return 'Modulator';
+      if (blob.includes('binder') || blob.includes('binding')) return 'Binder';
+      return 'Other / unclear';
+    }
+
+    function deriveTargetType(r){
+      const fam = (r.targetFamilyPrimary || '').toLowerCase();
+      const targets = (r.targets || []).join(' ').toLowerCase();
+      const blob = [fam, targets, r.mechanismOfAction, r.molecularMechanism, r.cellularMechanism].join(' ').toLowerCase();
+
+      // Microbiome / cell therapies first
+      if (blob.includes('microbiome') || blob.includes('probiotic') || blob.includes('live bacterial') || blob.includes('fecal')) return 'Microbiome';
+      if (blob.includes('car t') || blob.includes('treg') || blob.includes('stem cell') || blob.includes('mesenchymal') || blob.includes('cell therapy')) return 'Cell therapy';
+
+      // Broad target types
+      if (blob.includes('integrin') || blob.includes('madcam')) return 'Integrin / adhesion';
+      if (blob.includes('janus kinase') || blob.includes(' jak') || blob.includes('tyk2') || blob.includes('ripk') || blob.includes('kinase')) return 'Kinase';
+      if (blob.includes('receptor') || blob.includes('gpcr') || blob.includes('s1pr') || blob.includes('ccr') || blob.includes('cxcr')) return 'GPCR / receptor';
+      if (blob.includes('interleukin') || blob.includes('tnf') || blob.includes('tnfsf') || blob.includes('cytokine')) return 'Cytokine / immune ligand';
+      if (blob.includes('nuclear receptor') || blob.includes('ahr') || blob.includes('fxr') || blob.includes('nr1h4')) return 'Nuclear receptor';
+      if (blob.includes('phosphodiesterase') || blob.includes('pde')) return 'Enzyme (non-kinase)';
+      if (blob.includes('ion channel') || blob.includes('trp') || blob.includes('k(') || blob.includes('channel')) return 'Ion channel';
+      if (blob.includes('inflammasome') || blob.includes('nlrp')) return 'Innate sensor / inflammasome';
+
+      return 'Other';
+    }
+
+    // enrich entries with derived fields used for filtering + analytics
+    for (const r of DATA.entries){
+      r._moaClass = deriveMoAClass(r);
+      r._routeTop = (r.routes && r.routes.length) ? r.routes[0] : 'Unknown';
+      r._targetType = deriveTargetType(r);
+      r._primaryTarget = (r.targets && r.targets.length) ? r.targets[0] : 'Unknown';
+    }
+
+    const state = {
+      phaseMode: 'ibd',
+      q: '',
+      phase: new Set(),
+      modality: new Set(),
+      family: new Set(),
+      superfamily: new Set(),
+      target: new Set(),
+      moaClass: new Set(),
+      tag: new Set(),
+      route: new Set(),
+      oppGroup: 'family',
+      oppMetric: 'lateStageRate',
+    };
+
+    const $ = (id) => document.getElementById(id);
+
+    function phaseOf(r){ return state.phaseMode === 'ibd' ? (r.contextPhase || 'Unknown') : (r.overallPhase || 'Unknown'); }
+    function phaseRawOf(r){ return state.phaseMode === 'ibd' ? (r.contextPhaseRaw || '') : (r.overallPhaseRaw || ''); }
+
+    function uniqSorted(values){
+      const s = Array.from(new Set(values.filter(Boolean)));
+      s.sort((a,b)=> a.localeCompare(b));
+      return s;
+    }
+
+    function textHaystack(r){
+      return [
+        r.displayName,
+        r.brandName,
+        r.genericName,
+        r.organization,
+        r.targetFamilyPrimary,
+        r._targetType,
+        r._primaryTarget,
+        r._moaClass,
+        (r.targets||[]).join(' '),
+        (r.targetFamilies||[]).join(' '),
+        (r.conditions||[]).join(' '),
+        (r.focusTags||[]).join(' '),
+        (r.routes||[]).join(' '),
+        r.mechanismOfAction,
+        r.molecularMechanism,
+        r.cellularMechanism,
+      ].join(' ').toLowerCase();
+    }
+
+    function matches(r){
+      const q = state.q.trim().toLowerCase();
+      if (q && !textHaystack(r).includes(q)) return false;
+
+      const p = phaseOf(r);
+      if (state.phase.size && !state.phase.has(p)) return false;
+      if (state.modality.size && !state.modality.has(r.modality)) return false;
+      if (state.family.size && !state.family.has(r.targetFamilyPrimary)) return false;
+      if (state.superfamily.size && !state.superfamily.has(r._targetType)) return false;
+      if (state.target.size){
+        const ts = new Set(r.targets || []);
+        let ok = false;
+        for (const t of state.target){ if (ts.has(t)) { ok = true; break; } }
+        if (!ok) return false;
+      }
+      if (state.moaClass.size && !state.moaClass.has(r._moaClass)) return false;
+      if (state.tag.size){
+        const tags = new Set(r.focusTags || []);
+        let ok = false;
+        for (const t of state.tag){ if (tags.has(t)) { ok = true; break; } }
+        if (!ok) return false;
+      }
+      if (state.route.size){
+        const routes = new Set(r.routes || []);
+        let ok = false;
+        for (const t of state.route){ if (routes.has(t)) { ok = true; break; } }
+        if (!ok) return false;
+      }
+      return true;
+    }
+
+    function filtered(){
+      return DATA.entries.filter(matches);
+    }
+
+    function rankPhase(p){
+      return PHASE_RANK.has(p) ? PHASE_RANK.get(p) : 0;
+    }
+
+    function maxPhase(phases){
+      let best = 'Unknown';
+      let bestR = -1;
+      for (const p of phases){
+        const r = rankPhase(p);
+        if (r > bestR){ bestR = r; best = p; }
+      }
+      return best;
+    }
+
+    function countBy(rows, keyFn){
+      const m = new Map();
+      for (const r of rows){
+        const k = keyFn(r);
+        m.set(k, (m.get(k)||0) + 1);
+      }
+      return m;
+    }
+
+    function topN(map, n){
+      return [...map.entries()].sort((a,b)=> b[1]-a[1]).slice(0,n);
+    }
+
+    function renderBarChart(el, items, opts={}){
+      const height = opts.height ?? 240;
+      const pad = {t: 10, r: 14, b: 26, l: 16};
+      const w = el.clientWidth || 520;
+      const h = height;
+      const max = Math.max(1, ...items.map(x=>x[1]));
+      const barGap = opts.barGap ?? 10;
+      const barW = Math.max(10, (w - pad.l - pad.r - barGap*(items.length-1)) / items.length);
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+
+      // grid
+      const gGrid = document.createElementNS(svg.namespaceURI,'g');
+      const gridLines = 4;
+      for (let i=0;i<=gridLines;i++){
+        const y = pad.t + (h-pad.t-pad.b) * (i/gridLines);
+        const line = document.createElementNS(svg.namespaceURI,'line');
+        line.setAttribute('x1', pad.l);
+        line.setAttribute('x2', w-pad.r);
+        line.setAttribute('y1', y);
+        line.setAttribute('y2', y);
+        line.setAttribute('stroke', 'rgba(255,255,255,.06)');
+        gGrid.appendChild(line);
+      }
+      svg.appendChild(gGrid);
+
+      const gBars = document.createElementNS(svg.namespaceURI,'g');
+      items.forEach(([label, value], i)=>{
+        const x = pad.l + i*(barW + barGap);
+        const bh = (h-pad.t-pad.b) * (value / max);
+        const y = h - pad.b - bh;
+
+        const rect = document.createElementNS(svg.namespaceURI,'rect');
+        rect.setAttribute('x', x);
+        rect.setAttribute('y', y);
+        rect.setAttribute('width', barW);
+        rect.setAttribute('height', bh);
+        rect.setAttribute('rx', 10);
+        rect.setAttribute('fill', opts.fill ?? 'rgba(143,255,184,.75)');
+        rect.setAttribute('stroke', 'rgba(255,255,255,.10)');
+        rect.style.cursor = opts.onClick ? 'pointer' : 'default';
+        rect.addEventListener('click', ()=> opts.onClick?.(label));
+
+        const title = document.createElementNS(svg.namespaceURI,'title');
+        title.textContent = `${label}: ${value}`;
+        rect.appendChild(title);
+        gBars.appendChild(rect);
+
+        const tx = document.createElementNS(svg.namespaceURI,'text');
+        tx.setAttribute('x', x + barW/2);
+        tx.setAttribute('y', h - 8);
+        tx.setAttribute('fill', 'rgba(233,241,255,.75)');
+        tx.setAttribute('font-size', '11');
+        tx.setAttribute('text-anchor', 'middle');
+        tx.textContent = opts.labelFn ? opts.labelFn(label) : label;
+        gBars.appendChild(tx);
+
+        const tv = document.createElementNS(svg.namespaceURI,'text');
+        tv.setAttribute('x', x + barW/2);
+        tv.setAttribute('y', y - 6);
+        tv.setAttribute('fill', 'rgba(233,241,255,.85)');
+        tv.setAttribute('font-size', '12');
+        tv.setAttribute('text-anchor', 'middle');
+        tv.textContent = value;
+        gBars.appendChild(tv);
+      });
+      svg.appendChild(gBars);
+
+      el.innerHTML = '';
+      el.appendChild(svg);
+    }
+
+    function setCountBadge(id, set){
+      $(id).textContent = set.size ? `(${set.size})` : '';
+    }
+
+    function makeFilter(panelEl, kind, options, set, onChange){
+      panelEl.innerHTML = '';
+      for (const opt of options){
+        const label = document.createElement('label');
+        label.className = 'chk';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.dataset.kind = kind;
+        cb.dataset.value = opt;
+        cb.checked = set.has(opt);
+        cb.addEventListener('change', ()=>{
+          if (cb.checked) set.add(opt); else set.delete(opt);
+          onChange();
+        });
+        const txt = document.createElement('span');
+        txt.textContent = opt;
+        label.appendChild(cb);
+        label.appendChild(txt);
+        panelEl.appendChild(label);
+      }
+    }
+
+    function syncFilterCheckboxes(){
+      document.querySelectorAll('input[data-kind][data-value]').forEach((cb)=>{
+        const kind = cb.dataset.kind;
+        const value = cb.dataset.value;
+        const set = state[kind];
+        cb.checked = !!(set && set.has(value));
+      });
+      $('q').value = state.q;
+      setCountBadge('fPhaseCount', state.phase);
+      setCountBadge('fModCount', state.modality);
+      setCountBadge('fFamCount', state.family);
+      setCountBadge('fSuperFamCount', state.superfamily);
+      setCountBadge('fTargetCount', state.target);
+      setCountBadge('fMoACount', state.moaClass);
+      setCountBadge('fTagCount', state.tag);
+      setCountBadge('fRouteCount', state.route);
+    }
+
+	    function toast(msg){
+	      const t = $('toast');
+	      t.textContent = msg;
+	      t.classList.add('show');
+	      window.clearTimeout(toast._t);
+	      toast._t = window.setTimeout(()=> t.classList.remove('show'), 1500);
+	    }
+
+	    function escapeHtml(s){
+	      return String(s ?? '')
+	        .replaceAll('&','&amp;')
+	        .replaceAll('<','&lt;')
+	        .replaceAll('>','&gt;')
+	        .replaceAll('"','&quot;')
+	        .replaceAll("'", '&#39;');
+	    }
+
+	    function escAttr(s){
+	      return escapeHtml(s);
+	    }
+
+    function exportCSV(rows){
+      const cols = [
+        ['Entry Number','entryNumber'],
+        ['Asset','displayName'],
+        ['Brand','brandName'],
+        ['Generic','genericName'],
+        ['Organization','organization'],
+        ['Modality','modality'],
+        ['Context Phase','contextPhase'],
+        ['Overall Phase','overallPhase'],
+        ['Primary Family','targetFamilyPrimary'],
+        ['Targets','targets'],
+        ['Focus Tags','focusTags'],
+        ['Routes','routes'],
+        ['Mechanism of Action','mechanismOfAction'],
+      ];
+
+      const esc = (s)=>{
+        const v = Array.isArray(s) ? s.join('; ') : (s ?? '');
+        const str = String(v);
+        return '"' + str.replaceAll('"','""') + '"';
+      };
+
+      const lines = [];
+      lines.push(cols.map(c=>esc(c[0])).join(','));
+      for (const r of rows){
+        lines.push(cols.map(([_,k])=>esc(r[k])).join(','));
+      }
+      const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+	      a.download = `ci_dashboard_${state.phaseMode}_${new Date().toISOString().slice(0,10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast('CSV exported');
+    }
+
+    function openDrawer(r){
+      const d = $('drawer');
+      d.classList.add('open');
+      d.setAttribute('aria-hidden','false');
+      $('dTitle').textContent = r.displayName;
+      $('dSub').textContent = `Entry #${r.entryNumber} • ${r.modality} • ${r.targetFamilyPrimary}`;
+
+      const blocks = [];
+      const tag = (t, cls='')=> `<span class="tag ${cls}">${t}</span>`;
+
+	      blocks.push(`<div>${tag(`Context: ${r.contextPhase || 'Unknown'}`, 'phase')} ${tag(`Overall: ${r.overallPhase || 'Unknown'}`,'warn')}</div>`);
+      blocks.push(`<div class="kv"><div class="k">Brand</div><div class="v">${(r.brandName||'—')}</div></div>`);
+      blocks.push(`<div class="kv"><div class="k">Generic</div><div class="v">${(r.genericName||'—')}</div></div>`);
+      blocks.push(`<div class="kv"><div class="k">Organization</div><div class="v">${(r.organization||'—')}</div></div>`);
+      blocks.push(`<div class="kv"><div class="k">Active development</div><div class="v">${(r.underActiveDevelopment||'—')}</div></div>`);
+      blocks.push(`<div class="kv"><div class="k">Targets</div><div class="v">${(r.targets||[]).join('\n') || '—'}</div></div>`);
+      blocks.push(`<div class="kv"><div class="k">Target families</div><div class="v">${(r.targetFamilies||[]).join(', ') || '—'}</div></div>`);
+      blocks.push(`<div class="kv"><div class="k">Focus tags</div><div class="v">${(r.focusTags||[]).join(', ') || '—'}</div></div>`);
+      blocks.push(`<div class="kv"><div class="k">Routes (dev)</div><div class="v">${(r.routes||[]).join(', ') || '—'}</div></div>`);
+      blocks.push(`<div class="kv"><div class="k">Mechanism of action</div><div class="v">${(r.mechanismOfAction||'—')}</div></div>`);
+      blocks.push(`<div class="kv"><div class="k">Molecular mechanism</div><div class="v">${(r.molecularMechanism||'—')}</div></div>`);
+      blocks.push(`<div class="kv"><div class="k">Cellular mechanism</div><div class="v">${(r.cellularMechanism||'—')}</div></div>`);
+      blocks.push(`<div class="kv"><div class="k">Conditions (as listed)</div><div class="v">${(r.conditions||[]).join('\n') || '—'}</div></div>`);
+      blocks.push(`<div class="foot">Phase raw: ${phaseRawOf(r) || '—'} • Source: ${DATA.meta.sourceFile}</div>`);
+
+      $('dBody').innerHTML = blocks.join('');
+    }
+
+	    function closeDrawer(){
+	      const d = $('drawer');
+	      d.classList.remove('open');
+	      d.setAttribute('aria-hidden','true');
+	    }
+
+	    function openOppDrawer(st){
+	      if (!st) return;
+	      const d = $('drawer');
+	      d.classList.add('open');
+	      d.setAttribute('aria-hidden','false');
+
+	      $('dTitle').textContent = st.label;
+	      $('dSub').textContent = `Opportunity • ${oppGroupLabel()} • ${st._role || '—'}`;
+
+	      const pct = (v)=> `${Math.round((v ?? 0) * 100)}%`;
+	      const tag = (t, cls='')=> `<span class="tag ${cls}">${escapeHtml(t)}</span>`;
+	      const kv = (k, v)=> `<div class="kv"><div class="k">${escapeHtml(k)}</div><div class="v">${v}</div></div>`;
+
+	      const listTop = (items)=> (items && items.length)
+	        ? items.map(([k,c])=> `${String(k)} (${c})`).join('\n')
+	        : '—';
+
+	      const stageOrder = ['Preclinical','IND filed','Phase I','Phase II','Phase III','Registered','Marketed','Unknown'];
+	      const buckets = (st.buckets ? [...st.buckets.entries()] : []);
+	      buckets.sort((a,b)=> stageOrder.indexOf(a[0]) - stageOrder.indexOf(b[0]));
+	      const bucketLines = buckets.map(([k,c])=> `${k}: ${c}`).join('\n') || '—';
+
+	      const header = [
+	        tag(`Role: ${st._role || '—'}`, 'warn'),
+	        tag(`Comp: ${st._competitionIndex ?? '—'}/100`, 'accent'),
+	        tag(`Blue: ${st._blueOceanIndex ?? '—'}/100`, 'phase'),
+	        tag(`N: ${st.total}`, ''),
+	        tag(`Clinical: ${pct(st.clinicalEntryRate)}`, ''),
+	        tag(`Late-stage: ${pct(st.lateStageRate)}`, ''),
+	        tag(`Marketed: ${pct(st.marketedRate)}`, ''),
+	      ].join(' ');
+
+	      const body = [];
+	      body.push(`<div>${header}</div>`);
+	      body.push(kv('Interpretation', `<div>${escapeHtml(st._interpretation || '—')}</div>`));
+	      body.push(kv('Stage breakdown', `<div class="mono">${escapeHtml(bucketLines)}</div>`));
+	      body.push(kv('Top routes', `<div class="mono">${escapeHtml(listTop(st.routesTop))}</div>`));
+	      body.push(kv('Top MoA classes', `<div class="mono">${escapeHtml(listTop(st.moasTop))}</div>`));
+	      body.push(kv('Top modalities', `<div class="mono">${escapeHtml(listTop(st.modalitiesTop))}</div>`));
+	      body.push(kv('Top targets', `<div class="mono">${escapeHtml(listTop(st.targetsTop))}</div>`));
+	      body.push(kv('Top target families', `<div class="mono">${escapeHtml(listTop(st.targetFamiliesTop))}</div>`));
+	      body.push(kv('Top target types', `<div class="mono">${escapeHtml(listTop(st.targetTypesTop))}</div>`));
+
+	      body.push(`<div style="display:flex; gap:10px; margin-top:12px;">` +
+	        `<button class="btn primary" id="oppToggleBtn" type="button">Toggle Filter</button>` +
+	        `<button class="btn" id="oppCloseBtn" type="button">Close</button>` +
+	      `</div>`);
+
+	      $('dBody').innerHTML = body.join('');
+	      $('oppCloseBtn')?.addEventListener('click', closeDrawer);
+	      $('oppToggleBtn')?.addEventListener('click', ()=>{
+	        oppToggleFilter(st.label);
+	        closeDrawer();
+	        render();
+	        toast('Filter toggled');
+	      });
+	    }
+
+    function computeInsights(rows){
+      const fam = new Map();
+      const routes = new Map();
+      const phases = new Map();
+      const moas = new Map();
+
+      for (const r of rows){
+        const f = r.targetFamilyPrimary || 'Other';
+        const p = phaseOf(r);
+        fam.set(f, fam.get(f) || {total:0, late:0, marketed:0, phases: new Set()});
+        const st = fam.get(f);
+        st.total++;
+        st.phases.add(p);
+        if (LATE.has(p)) st.late++;
+        if (p === 'Marketed') st.marketed++;
+
+        for (const rt of (r.routes || [])){
+          routes.set(rt, (routes.get(rt)||0)+1);
+        }
+
+        moas.set(r._moaClass || 'Other / unclear', (moas.get(r._moaClass || 'Other / unclear')||0)+1);
+
+        phases.set(p, (phases.get(p)||0)+1);
+      }
+
+      const famArr = [...fam.entries()].filter(([k,_])=>k!=='Other').sort((a,b)=> b[1].total - a[1].total);
+      const crowded = famArr.filter(([_,st])=> st.total>=10).slice(0,6);
+      const whitespace = famArr.filter(([_,st])=> st.total<=4).slice(0,6);
+
+      const routeArr = [...routes.entries()].sort((a,b)=> b[1]-a[1]);
+      const oral = routes.get('Oral') || 0;
+      const rectal = routes.get('Rectal') || 0;
+      const iv = routes.get('Intravenous') || 0;
+      const sc = routes.get('Subcutaneous') || 0;
+
+      const phase2 = phases.get('Phase II') || 0;
+      const phase1 = phases.get('Phase I') || 0;
+      const phase3 = phases.get('Phase III') || 0;
+      const marketed = phases.get('Marketed') || 0;
+
+      const lines = [];
+      lines.push(`<div class="tag accent">${nf.format(rows.length)} assets in view</div>`);
+      lines.push(`<div class="small" style="margin:10px 0 0;">Crowded vs blue-ocean: interpret as “how many assets exist” vs “how many have reached late-stage/market” (snapshot-based maturity, not true probabilities).</div>`);
+
+      lines.push(`<div style="margin-top:10px;">` +
+        `<div class="tag">Phase I: ${phase1}</div>` +
+        `<div class="tag">Phase II: ${phase2}</div>` +
+        `<div class="tag">Phase III: ${phase3}</div>` +
+        `<div class="tag phase">Marketed: ${marketed}</div>` +
+      `</div>`);
+
+      if (crowded.length){
+        lines.push(`<div class="kv"><div class="k">Crowded target families (by asset count)</div><div class="v">${crowded.map(([k,st])=> `${k} — ${st.total} assets; late-stage ${st.late}; marketed ${st.marketed}; max ${maxPhase(st.phases)}`).join('\n')}</div></div>`);
+      } else {
+        lines.push(`<div class="kv"><div class="k">Crowded target families</div><div class="v">No family meets the “≥10 assets” heuristic under current filters.</div></div>`);
+      }
+
+      if (whitespace.length){
+        lines.push(`<div class="kv"><div class="k">Blue-ocean candidates (low count)</div><div class="v">${whitespace.map(([k,st])=> `${k} — ${st.total} assets; late-stage ${st.late}; marketed ${st.marketed}`).join('\n')}</div></div>`);
+      }
+
+      if (routeArr.length){
+        lines.push(`<div class="kv"><div class="k">Routes & delivery</div><div class="v">Oral ${oral} • IV ${iv} • SC ${sc} • Rectal ${rectal}\nInterpretation: oral dominates; local delivery (rectal/topical) is relatively sparse and may be a whitespace for certain MoA/targets.</div></div>`);
+      }
+
+      const moaTop = [...moas.entries()].sort((a,b)=>b[1]-a[1]).slice(0,6);
+      lines.push(`<div class="kv"><div class="k">MoA/mechanism mix (derived)</div><div class="v">${moaTop.map(([k,v])=>`${k}: ${v}`).join('\n')}</div></div>`);
+
+      lines.push(`<div class="foot">Important: phase “rates” shown here are observed maturity within this dataset (snapshot), not clinical success probabilities. Use as a portfolio-mapping aid.</div>`);
+      return lines.join('');
+    }
+
+    function oppGroupLabel(){
+      if (state.oppGroup === 'family') return 'Target family';
+      if (state.oppGroup === 'superfamily') return 'Target type';
+      if (state.oppGroup === 'target') return 'Target';
+      if (state.oppGroup === 'modality') return 'Modality';
+      if (state.oppGroup === 'route') return 'Route';
+      if (state.oppGroup === 'moa') return 'MoA class';
+      return 'Group';
+    }
+
+    function oppMetricLabel(){
+      if (state.oppMetric === 'lateStageRate') return 'Late-stage rate (among clinical)';
+      if (state.oppMetric === 'marketedRate') return 'Marketed rate (among total)';
+      if (state.oppMetric === 'clinicalEntryRate') return 'Clinical entry rate (≥ Phase I)';
+      return 'Metric';
+    }
+
+    function oppGroupKey(r){
+      if (state.oppGroup === 'family') return r.targetFamilyPrimary || 'Other';
+      if (state.oppGroup === 'superfamily') return r._targetType || 'Other';
+      if (state.oppGroup === 'target') return r._primaryTarget || 'Unknown';
+      if (state.oppGroup === 'modality') return r.modality || 'Other';
+      if (state.oppGroup === 'route') return (r.routes && r.routes.length) ? r.routes[0] : 'Unknown';
+      if (state.oppGroup === 'moa') return r._moaClass || 'Other / unclear';
+      return 'Other';
+    }
+
+    function oppToggleFilter(label){
+      if (state.oppGroup === 'family'){
+        if (state.family.has(label)) state.family.delete(label); else state.family.add(label);
+      } else if (state.oppGroup === 'superfamily'){
+        if (state.superfamily.has(label)) state.superfamily.delete(label); else state.superfamily.add(label);
+      } else if (state.oppGroup === 'target'){
+        if (state.target.has(label)) state.target.delete(label); else state.target.add(label);
+      } else if (state.oppGroup === 'modality'){
+        if (state.modality.has(label)) state.modality.delete(label); else state.modality.add(label);
+      } else if (state.oppGroup === 'route'){
+        if (state.route.has(label)) state.route.delete(label); else state.route.add(label);
+      } else if (state.oppGroup === 'moa'){
+        if (state.moaClass.has(label)) state.moaClass.delete(label); else state.moaClass.add(label);
+      }
+    }
+
+    function oppIsSelected(label){
+      if (state.oppGroup === 'family') return state.family.has(label);
+      if (state.oppGroup === 'superfamily') return state.superfamily.has(label);
+      if (state.oppGroup === 'target') return state.target.has(label);
+      if (state.oppGroup === 'modality') return state.modality.has(label);
+      if (state.oppGroup === 'route') return state.route.has(label);
+      if (state.oppGroup === 'moa') return state.moaClass.has(label);
+      return false;
+    }
+
+    function stageBucket(p){
+      if (p === 'Marketed') return 'Marketed';
+      if (p === 'Registered' || p === 'Pre-registered') return 'Registered';
+      if (p === 'Phase III') return 'Phase III';
+      if (p === 'Phase II') return 'Phase II';
+      if (p === 'Phase I' || p === 'Phase I/II') return 'Phase I';
+      if (p === 'IND filed') return 'IND filed';
+      if (p === 'Preclinical') return 'Preclinical';
+      return 'Unknown';
+    }
+
+	    function oppCompute(rows){
+	      const m = new Map();
+	      for (const r of rows){
+	        const k = oppGroupKey(r);
+	        const p = phaseOf(r);
+	        const b = stageBucket(p);
+	        const st = m.get(k) || {
+	          label: k,
+	          total: 0,
+	          clinical: 0,
+	          late: 0,
+	          marketed: 0,
+	          routes: new Map(),
+	          moas: new Map(),
+	          modalities: new Map(),
+	          targets: new Map(),
+	          targetFamilies: new Map(),
+	          targetTypes: new Map(),
+	          buckets: new Map(),
+	        };
+	        st.total++;
+	        st.buckets.set(b, (st.buckets.get(b)||0) + 1);
+	        if (PHASE_RANK.get(p) >= PHASE_RANK.get('Phase I')) st.clinical++;
+	        if (LATE.has(p)) st.late++;
+	        if (p === 'Marketed') st.marketed++;
+	        for (const rt of (r.routes || [])) st.routes.set(rt, (st.routes.get(rt)||0) + 1);
+	        st.moas.set(r._moaClass || 'Other / unclear', (st.moas.get(r._moaClass || 'Other / unclear')||0) + 1);
+	        st.modalities.set(r.modality || 'Other', (st.modalities.get(r.modality || 'Other')||0) + 1);
+	        for (const t of (r.targets || [])) st.targets.set(t, (st.targets.get(t)||0) + 1);
+	        st.targetFamilies.set(r.targetFamilyPrimary || 'Other', (st.targetFamilies.get(r.targetFamilyPrimary || 'Other')||0) + 1);
+	        st.targetTypes.set(r._targetType || 'Other', (st.targetTypes.get(r._targetType || 'Other')||0) + 1);
+	        m.set(k, st);
+	      }
+	      const arr = [...m.values()];
+	      for (const st of arr){
+	        const denomClinical = Math.max(1, st.clinical);
+	        st.lateStageRate = st.late / denomClinical;
+	        st.clinicalEntryRate = st.clinical / Math.max(1, st.total);
+	        st.marketedRate = st.marketed / Math.max(1, st.total);
+	        st.routesTop = [...st.routes.entries()].sort((a,b)=>b[1]-a[1]).slice(0,6);
+	        st.moasTop = [...st.moas.entries()].sort((a,b)=>b[1]-a[1]).slice(0,6);
+	        st.modalitiesTop = [...st.modalities.entries()].sort((a,b)=>b[1]-a[1]).slice(0,6);
+	        st.targetsTop = [...st.targets.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8);
+	        st.targetFamiliesTop = [...st.targetFamilies.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8);
+	        st.targetTypesTop = [...st.targetTypes.entries()].sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+	        st.routeTop = st.routesTop[0]?.[0] || '—';
+	        st.moaTop = st.moasTop[0]?.[0] || '—';
+	        st.modTop = st.modalitiesTop[0]?.[0] || '—';
+	        st.maxBucket = [...st.buckets.keys()].sort((a,b)=> (PHASE_RANK.get(a)||0) - (PHASE_RANK.get(b)||0)).slice(-1)[0] || 'Unknown';
+	      }
+	      return arr.sort((a,b)=> b.total - a.total);
+	    }
+
+    function renderOpportunityPlot(el, stats){
+      const height = 260;
+      const pad = {t: 14, r: 14, b: 36, l: 52};
+      const w = el.clientWidth || 520;
+      const h = height;
+
+      const maxCount = Math.max(1, ...stats.map(s=>s.total));
+      const metric = state.oppMetric;
+      const yVal = (s)=> s[metric] ?? 0;
+      const xs = stats.map(s=>s.total);
+      const ys = stats.map(yVal);
+      const xMed = xs.slice().sort((a,b)=>a-b)[Math.floor(xs.length/2)] || 0;
+      const yMed = ys.slice().sort((a,b)=>a-b)[Math.floor(ys.length/2)] || 0;
+
+      const xScale = (x)=> pad.l + (w-pad.l-pad.r) * (x / maxCount);
+      const yScale = (y)=> (h-pad.b) - (h-pad.t-pad.b) * Math.max(0, Math.min(1, y));
+
+      const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+
+      const axis = (x1,y1,x2,y2)=>{
+        const line = document.createElementNS(svg.namespaceURI,'line');
+        line.setAttribute('x1', x1);
+        line.setAttribute('y1', y1);
+        line.setAttribute('x2', x2);
+        line.setAttribute('y2', y2);
+        line.setAttribute('stroke', 'rgba(255,255,255,.10)');
+        return line;
+      };
+
+      svg.appendChild(axis(pad.l, pad.t, pad.l, h-pad.b));
+      svg.appendChild(axis(pad.l, h-pad.b, w-pad.r, h-pad.b));
+
+      // quadrant medians
+      const vline = axis(xScale(xMed), pad.t, xScale(xMed), h-pad.b);
+      vline.setAttribute('stroke-dasharray','6 6');
+      vline.setAttribute('stroke','rgba(255,255,255,.12)');
+      svg.appendChild(vline);
+      const hline = axis(pad.l, yScale(yMed), w-pad.r, yScale(yMed));
+      hline.setAttribute('stroke-dasharray','6 6');
+      hline.setAttribute('stroke','rgba(255,255,255,.12)');
+      svg.appendChild(hline);
+
+      const xLab = document.createElementNS(svg.namespaceURI,'text');
+      xLab.setAttribute('x', (pad.l + (w-pad.r)) / 2);
+      xLab.setAttribute('y', h - 10);
+      xLab.setAttribute('fill', 'rgba(233,241,255,.75)');
+      xLab.setAttribute('font-size','12');
+      xLab.setAttribute('text-anchor','middle');
+      xLab.textContent = `Crowdedness → (# assets)`;
+      svg.appendChild(xLab);
+
+      const yLab = document.createElementNS(svg.namespaceURI,'text');
+      yLab.setAttribute('x', 14);
+      yLab.setAttribute('y', (pad.t + (h-pad.b))/2);
+      yLab.setAttribute('fill', 'rgba(233,241,255,.75)');
+      yLab.setAttribute('font-size','12');
+      yLab.setAttribute('text-anchor','middle');
+      yLab.setAttribute('transform', `rotate(-90 14 ${(pad.t + (h-pad.b))/2})`);
+      yLab.textContent = oppMetricLabel();
+      svg.appendChild(yLab);
+
+      const g = document.createElementNS(svg.namespaceURI,'g');
+      for (const st of stats){
+        const x = xScale(st.total);
+        const y = yScale(yVal(st));
+        const r = 6 + 10 * Math.sqrt(st.total / maxCount);
+
+        const isSel = oppIsSelected(st.label);
+        const fill = (st.total >= xMed && yVal(st) >= yMed) ? 'rgba(255,211,139,.70)'
+          : (st.total >= xMed && yVal(st) < yMed) ? 'rgba(255,126,126,.62)'
+          : (st.total < xMed && yVal(st) >= yMed) ? 'rgba(143,255,184,.66)'
+          : 'rgba(139,211,255,.55)';
+
+        const c = document.createElementNS(svg.namespaceURI,'circle');
+        c.setAttribute('cx', x);
+        c.setAttribute('cy', y);
+        c.setAttribute('r', r);
+        c.setAttribute('fill', fill);
+        c.setAttribute('stroke', isSel ? 'rgba(255,255,255,.88)' : 'rgba(255,255,255,.16)');
+        c.setAttribute('stroke-width', isSel ? '2.2' : '1');
+        c.style.cursor = 'pointer';
+
+        const title = document.createElementNS(svg.namespaceURI,'title');
+        const pct = (v)=> `${Math.round(v*100)}%`;
+        title.textContent =
+          `${oppGroupLabel()}: ${st.label}\n` +
+          `Role: ${st._role || '—'}\n` +
+          `Competition index: ${st._competitionIndex ?? '—'}\n` +
+          `Assets: ${st.total}\n` +
+          `Clinical entry: ${st.clinical} (${pct(st.clinicalEntryRate)})\n` +
+          `Late-stage: ${st.late} (${pct(st.lateStageRate)} of clinical)\n` +
+          `Marketed: ${st.marketed} (${pct(st.marketedRate)} of total)\n` +
+          `Top modality: ${st.modTop}\n` +
+          `Top MoA: ${st.moaTop}\n` +
+          `Top route: ${st.routeTop}`;
+        c.appendChild(title);
+
+        c.addEventListener('click', ()=>{
+          oppToggleFilter(st.label);
+          render();
+        });
+        g.appendChild(c);
+      }
+      svg.appendChild(g);
+
+      el.innerHTML = '';
+      el.appendChild(svg);
+
+      // legend
+      $('oppLegend').innerHTML = [
+        `<span><span class="sw" style="background:rgba(255,211,139,.70)"></span>Crowded + mature</span>`,
+        `<span><span class="sw" style="background:rgba(255,126,126,.62)"></span>Crowded + early</span>`,
+        `<span><span class="sw" style="background:rgba(143,255,184,.66)"></span>Blue + mature</span>`,
+        `<span><span class="sw" style="background:rgba(139,211,255,.55)"></span>Blue + early</span>`,
+      ].join('');
+    }
+
+	    function renderOpportunity(rows){
+	      const statsAll = oppCompute(rows).filter(s=>s.label !== 'Other' && s.label !== 'Unknown');
+	      const stats = statsAll.slice(0, 28);
+
+      // compute role + competition/whitespace indices for annotation/ranking
+      const xsAll = statsAll.map(s=>s.total);
+      const ysAll = statsAll.map(s=> s[state.oppMetric] ?? 0);
+      const xMedAll = xsAll.slice().sort((a,b)=>a-b)[Math.floor(xsAll.length/2)] || 0;
+      const yMedAll = ysAll.slice().sort((a,b)=>a-b)[Math.floor(ysAll.length/2)] || 0;
+      const maxTotal = Math.max(1, ...xsAll);
+      const logMax = Math.log1p(maxTotal);
+      const maturityComposite = (s)=> 0.5*(s.lateStageRate ?? 0) + 0.5*(s.marketedRate ?? 0);
+
+      for (const s of statsAll){
+        const crowd = logMax ? (Math.log1p(s.total) / logMax) : 0;
+        const maturity = maturityComposite(s);
+        const comp = 100 * (0.65*crowd + 0.35*maturity);
+        const blue = 100 * (0.65*(1-crowd) + 0.35*maturity);
+        s._competitionIndex = Math.round(comp);
+        s._blueOceanIndex = Math.round(blue);
+
+        const y = (s[state.oppMetric] ?? 0);
+        const crowded = s.total >= xMedAll;
+        const mature = y >= yMedAll;
+        s._role = crowded && mature ? 'Crowded + mature (incumbent-heavy)'
+          : crowded && !mature ? 'Crowded + early (competitive pipeline)'
+          : !crowded && mature ? 'Blue-ocean + mature (undercrowded winners)'
+          : 'Blue-ocean + early (emerging)';
+      }
+
+      const plot = $('oppPlot');
+      if (plot) renderOpportunityPlot(plot, stats.length ? stats : statsAll);
+
+      // narrative: pick examples per quadrant using medians (computed on shown stats)
+      const xMed = xMedAll;
+      const yMed = yMedAll;
+
+      const quad = (pred)=> statsAll.filter(pred).sort((a,b)=> b.total - a.total).slice(0,4);
+      const crowdedMature = quad(s=> s.total>=xMed && (s[state.oppMetric] ?? 0) >= yMed);
+      const crowdedEarly  = quad(s=> s.total>=xMed && (s[state.oppMetric] ?? 0) <  yMed);
+      const blueMature    = quad(s=> s.total< xMed && (s[state.oppMetric] ?? 0) >= yMed);
+      const blueEarly     = quad(s=> s.total< xMed && (s[state.oppMetric] ?? 0) <  yMed);
+
+	      const pct = (v)=> `${Math.round((v ?? 0) * 100)}%`;
+
+	      const interpret = (s)=>{
+	        const role = s._role || '—';
+	        const comp = s._competitionIndex ?? 0;
+	        const blue = s._blueOceanIndex ?? 0;
+	        const mod = s.modTop || '—';
+	        const moa = s.moaTop || '—';
+	        const route = s.routeTop || '—';
+	        const mkt = s.marketedRate ?? 0;
+
+	        if (role.startsWith('Crowded + mature')){
+	          return `Incumbent-heavy and de-risked. Differentiation likely needs clear advantage in mechanism (${moa}), modality (${mod}), and/or delivery (${route}); comp ${comp}/100.`;
+	        }
+	        if (role.startsWith('Crowded + early')){
+	          const gap = mkt === 0 ? 'no marketed assets yet' : 'limited marketed penetration';
+	          return `High program density but limited maturity (${gap}). Whitespace is usually in differentiated delivery (${route}) or mechanism specificity vs the dominant MoA (${moa}); comp ${comp}/100.`;
+	        }
+	        if (role.startsWith('Blue-ocean + mature')){
+	          return `Under-crowded but with meaningful maturity (late-stage/market signals). Often suggests a “quiet winner” pattern; investigate why adoption is sparse (safety, delivery, biomarker stratification). Blue ${blue}/100; common route ${route}.`;
+	        }
+	        return `Sparse and early-stage: higher uncertainty, but room for first-mover positioning. Focus on target validation, translational readouts, and pragmatic delivery (current skew: ${route}). Blue ${blue}/100.`;
+	      };
+
+	      for (const s of statsAll) s._interpretation = interpret(s);
+	      OPP_MAP = new Map(statsAll.map(s=>[s.label, s]));
+
+	      const roleShort = (s)=> (s._role || '—').split('(')[0].trim();
+	      const num = (v)=> (v == null ? '—' : nf.format(v));
+
+	      const oppTable = (title, list, {rank=false} = {})=>{
+	        if (!list || !list.length){
+	          return `<div class="kv"><div class="k">${escapeHtml(title)}</div><div class="v">—</div></div>`;
+	        }
+
+	        const cols = [
+	          ...(rank ? [{key:'#', th:'#'}] : []),
+	          {key:'label', th: oppGroupLabel()},
+	          {key:'role', th:'Role'},
+	          {key:'comp', th:'Comp'},
+	          {key:'blue', th:'Blue'},
+	          {key:'n', th:'N'},
+	          {key:'clin', th:'Clinical'},
+	          {key:'late', th:'Late'},
+	          {key:'mkt', th:'Market'},
+	          {key:'mod', th:'Top modality'},
+	          {key:'moa', th:'Top MoA'},
+	          {key:'route', th:'Top route'},
+	          {key:'why', th:'Takeaway'},
+	        ];
+
+	        const head = cols.map(c=>`<th>${escapeHtml(c.th)}</th>`).join('');
+	        const rowsHtml = list.map((s, i)=>`
+	          <tr class="oppRow" data-opp-label="${escAttr(s.label)}" title="Click for details">
+	            ${rank ? `<td class="mono">${i+1}</td>` : ''}
+	            <td><span class="mono">${escapeHtml(s.label)}</span></td>
+	            <td>${escapeHtml(roleShort(s))}</td>
+	            <td class="mono">${num(s._competitionIndex)}</td>
+	            <td class="mono">${num(s._blueOceanIndex)}</td>
+	            <td class="mono">${num(s.total)}</td>
+	            <td class="mono">${pct(s.clinicalEntryRate)}</td>
+	            <td class="mono">${pct(s.lateStageRate)}</td>
+	            <td class="mono">${pct(s.marketedRate)}</td>
+	            <td>${escapeHtml(s.modTop || '—')}</td>
+	            <td>${escapeHtml(s.moaTop || '—')}</td>
+	            <td>${escapeHtml(s.routeTop || '—')}</td>
+	            <td class="oppSummary" title="${escAttr(s._interpretation || '')}">${escapeHtml(s._interpretation || '—')}</td>
+	          </tr>
+	        `).join('');
+
+	        return `
+	          <div class="kv">
+	            <div class="k">${escapeHtml(title)}</div>
+	            <div class="v" style="white-space:normal;">
+	              <div class="oppTableWrap">
+	                <table class="oppTable">
+	                  <thead><tr>${head}</tr></thead>
+	                  <tbody>${rowsHtml}</tbody>
+	                </table>
+	              </div>
+	            </div>
+	          </div>
+	        `;
+	      };
+
+	      const parts = [];
+	      parts.push(`<div class="small">Selection plot: x = crowdedness (# assets), y = ${oppMetricLabel()}. Click a bubble to toggle a filter (it updates all charts and the asset list). Click any table row to open details + toggle filter.</div>`);
+	      parts.push(oppTable('Crowded + mature', crowdedMature));
+	      parts.push(oppTable('Crowded + early', crowdedEarly));
+	      parts.push(oppTable('Blue-ocean + mature', blueMature));
+	      parts.push(oppTable('Blue-ocean + early', blueEarly));
+
+	      const topComp = statsAll.slice().sort((a,b)=> b._competitionIndex - a._competitionIndex).slice(0,6);
+	      const topBlue = statsAll.slice().sort((a,b)=> b._blueOceanIndex - a._blueOceanIndex).slice(0,6);
+	      parts.push(oppTable('Most competitive spaces (computed)', topComp, {rank:true}));
+	      parts.push(oppTable('Blue-ocean opportunities (computed)', topBlue, {rank:true}));
+
+      // success-rate lens by stage (overall)
+      const total = rows.length || 1;
+      const clinical = rows.filter(r=> PHASE_RANK.get(phaseOf(r)) >= PHASE_RANK.get('Phase I')).length;
+      const late = rows.filter(r=> LATE.has(phaseOf(r))).length;
+      const marketed = rows.filter(r=> phaseOf(r)==='Marketed').length;
+      parts.push(`<div class="kv"><div class="k">Observed maturity (overall, within current filters)</div><div class="v">Clinical entry: ${clinical}/${total} (${pct(clinical/total)}) • Late-stage: ${late}/${Math.max(1,clinical)} (${pct(late/Math.max(1,clinical))} of clinical) • Marketed: ${marketed}/${total} (${pct(marketed/total)} of total)</div></div>`);
+      parts.push(`<div class="foot">Caveat: “rates” are dataset maturity snapshots; not clinical PoS and not adjusted for time, trial design, or indication scope.</div>`);
+
+      $('insights').innerHTML = parts.join('');
+    }
+
+    function render(){
+      syncFilterCheckboxes();
+      $('srcFile').textContent = DATA.meta.sourceFile;
+      $('genAt').textContent = new Date(DATA.meta.generatedAt).toLocaleString();
+
+      $('oppGroup').value = state.oppGroup;
+      $('oppMetric').value = state.oppMetric;
+
+      $('modeIbd').classList.toggle('active', state.phaseMode==='ibd');
+      $('modeOverall').classList.toggle('active', state.phaseMode==='overall');
+
+      const rows = filtered();
+      $('matchCount').textContent = `${nf.format(rows.length)} / ${nf.format(DATA.entries.length)} match`;
+      $('showing').textContent = `${nf.format(rows.length)} rows`;
+
+      // KPIs
+      const byPhase = countBy(rows, phaseOf);
+      const byMod = countBy(rows, r=>r.modality || 'Other');
+      const byFam = countBy(rows, r=>r.targetFamilyPrimary || 'Other');
+
+      const marketed = byPhase.get('Marketed') || 0;
+      const phase2 = byPhase.get('Phase II') || 0;
+      const phase1 = byPhase.get('Phase I') || 0;
+      const lateStage = rows.filter(r=> LATE.has(phaseOf(r))).length;
+      const oralAssets = rows.filter(r=> (r.routes || []).includes('Oral')).length;
+      const topFam = topN(byFam, 1)[0]?.[0] ?? '—';
+
+      const kpis = [
+        {label:'Assets (filtered)', val: nf.format(rows.length), sub: state.phaseMode==='ibd' ? 'using Context phase' : 'using overall phase'},
+        {label:'Marketed', val: nf.format(marketed), sub: 'in selected phase mode'},
+        {label:'Phase II', val: nf.format(phase2), sub: 'late-mid pipeline'},
+        {label:'Late-stage', val: nf.format(lateStage), sub: 'Marketed/Registered/Phase III'},
+        {label:'Oral assets', val: nf.format(oralAssets), sub: 'has oral route (IBD dev)'},
+        {label:'Top family', val: topFam, sub: `primary family (N=${byFam.get(topFam)||0})`},
+      ];
+      $('kpis').innerHTML = kpis.map(k=>`
+        <div class="kpi">
+          <div class="label">${k.label}</div>
+          <div class="val">${k.val}</div>
+          <div class="sub">${k.sub}</div>
+        </div>
+      `).join('');
+
+      $('phaseNote').textContent = state.phaseMode==='ibd'
+        ? "Context phase = max phase across IBD-relevant Development Status rows (Crohn’s / UC / IBD / pouchitis)."
+        : "Overall phase = Product List ‘Highest Phase’ (may include approvals outside IBD).";
+
+      // charts
+      const phaseItems = PHASE_ORDER_DISPLAY.map(p=>[p, byPhase.get(p)||0]);
+      renderBarChart($('chartPhase'), phaseItems, {
+        fill: 'rgba(139,211,255,.72)',
+        onClick: (label)=>{
+          if (state.phase.has(label)) state.phase.delete(label); else state.phase.add(label);
+          render();
+        },
+        labelFn: (p)=> p.replace('Pre-registered','Pre-reg')
+      });
+
+      const modItems = topN(byMod, 12);
+      renderBarChart($('chartMod'), modItems, {
+        fill: 'rgba(143,255,184,.72)',
+        onClick: (label)=>{
+          if (state.modality.has(label)) state.modality.delete(label); else state.modality.add(label);
+          render();
+        },
+      });
+
+      const famItems = topN(byFam, 12);
+      renderBarChart($('chartFam'), famItems, {
+        fill: 'rgba(255,211,139,.70)',
+        onClick: (label)=>{
+          if (state.family.has(label)) state.family.delete(label); else state.family.add(label);
+          render();
+        },
+      });
+
+      const byRoute = new Map();
+      for (const r of rows){
+        for (const rt of (r.routes||[])){
+          byRoute.set(rt, (byRoute.get(rt)||0)+1);
+        }
+      }
+      const routeItems = topN(byRoute, 12);
+      renderBarChart($('chartRoute'), routeItems, {
+        fill: 'rgba(233,241,255,.45)',
+        onClick: (label)=>{
+          if (state.route.has(label)) state.route.delete(label); else state.route.add(label);
+          render();
+        },
+      });
+
+      // tags
+      const byTag = new Map();
+      for (const r of rows){
+        for (const t of (r.focusTags || [])){
+          byTag.set(t, (byTag.get(t)||0) + 1);
+        }
+      }
+      const tagItems = topN(byTag, 10);
+      renderBarChart($('chartTag'), tagItems, {
+        fill: 'rgba(143,255,184,.55)',
+        onClick: (label)=>{
+          if (state.tag.has(label)) state.tag.delete(label); else state.tag.add(label);
+          render();
+        },
+      });
+
+      // target types
+      const bySuperFam = countBy(rows, r=> (r._targetType || 'Other'));
+      const superFamItems = topN(bySuperFam, 12);
+      renderBarChart($('chartSuperFam'), superFamItems, {
+        fill: 'rgba(139,211,255,.48)',
+        onClick: (label)=>{
+          if (state.superfamily.has(label)) state.superfamily.delete(label); else state.superfamily.add(label);
+          render();
+        },
+        labelFn: (label)=> label.length > 14 ? (label.slice(0, 13) + '…') : label,
+      });
+
+      // targets
+      const byTarget = countBy(rows, r=> (r._primaryTarget || 'Unknown'));
+      const targetItems = topN(byTarget, 12);
+      renderBarChart($('chartTarget'), targetItems, {
+        fill: 'rgba(255,211,139,.52)',
+        onClick: (label)=>{
+          if (state.target.has(label)) state.target.delete(label); else state.target.add(label);
+          render();
+        },
+        labelFn: (label)=> label.length > 14 ? (label.slice(0, 13) + '…') : label,
+      });
+
+      // organizations (best-effort: uses listed organization string)
+      const byOrg = countBy(rows, r=> (r.organization || '—'));
+      const orgItems = topN(byOrg, 10);
+      renderBarChart($('chartOrg'), orgItems, {
+        fill: 'rgba(139,211,255,.52)',
+        onClick: (label)=>{
+          state.q = label === '—' ? '' : label;
+          render();
+          toast(label === '—' ? 'Cleared org filter' : 'Filtered by organization');
+        },
+        labelFn: (label)=> label.length > 12 ? (label.slice(0, 11) + '…') : label,
+      });
+
+      // late-stage by family
+      const lateByFam = new Map();
+      for (const r of rows){
+        const f = r.targetFamilyPrimary || 'Other';
+        if (LATE.has(phaseOf(r))){
+          lateByFam.set(f, (lateByFam.get(f)||0) + 1);
+        }
+      }
+      const lateFamItems = topN(lateByFam, 12);
+      renderBarChart($('chartLateFam'), lateFamItems, {
+        fill: 'rgba(255,211,139,.62)',
+        onClick: (label)=>{
+          if (state.family.has(label)) state.family.delete(label); else state.family.add(label);
+          render();
+        },
+      });
+
+      // opportunity lens (plot + narrative)
+      renderOpportunity(rows);
+
+      // table
+      const tbody = $('tbody');
+      tbody.innerHTML='';
+      for (const r of rows){
+        const tr = document.createElement('tr');
+        tr.addEventListener('click', ()=> openDrawer(r));
+
+        const td = (html)=>{
+          const cell = document.createElement('td');
+          cell.innerHTML = html;
+          return cell;
+        };
+
+        const phase = phaseOf(r);
+        const targets = (r.targets||[]).slice(0,3);
+        const routes = (r.routes||[]).slice(0,2);
+
+        tr.appendChild(td(`<div style="font-weight:700;">${r.displayName}</div><div class="small">${r.brandName ? `Brand: ${r.brandName}` : (r.genericName ? `Generic: ${r.genericName}` : '')}</div>`));
+        tr.appendChild(td(`<div>${r.organization || '—'}</div>`));
+        tr.appendChild(td(`<span class="tag">${r.modality}</span>`));
+        tr.appendChild(td(`<span class="tag phase">${phase}</span><div class="small">${phaseRawOf(r) || ''}</div>`));
+        tr.appendChild(td(`<span class="tag accent">${r.targetFamilyPrimary}</span>`));
+        tr.appendChild(td(`<div>${targets.join('<br/>') || '—'}</div>${(r.targets||[]).length>3 ? `<div class="small">+${(r.targets||[]).length-3} more</div>`:''}`));
+        tr.appendChild(td(`${(r.focusTags||[]).map(t=>`<span class="tag">${t}</span>`).join('')}`));
+        tr.appendChild(td(`<div>${routes.join('<br/>') || '—'}</div>${(r.routes||[]).length>2 ? `<div class="small">+${(r.routes||[]).length-2} more</div>`:''}`));
+
+        tbody.appendChild(tr);
+      }
+
+    }
+
+    function initFilters(){
+      const all = DATA.entries;
+
+      const phases = PHASE_ORDER_DISPLAY.slice();
+      const modalities = uniqSorted(all.map(r=>r.modality || 'Other'));
+      const families = uniqSorted(all.map(r=>r.targetFamilyPrimary || 'Other'));
+      const superfams = uniqSorted(all.map(r=>r._targetType || 'Other'));
+      const targetsAll = [];
+      for (const r of all){ for (const t of (r.targets || [])) targetsAll.push(t); }
+      const targetCounts = countBy(targetsAll, t=>t);
+      const targetsTop = [...targetCounts.entries()].sort((a,b)=>b[1]-a[1]).slice(0, 50).map(x=>x[0]);
+      const moas = uniqSorted(all.map(r=>r._moaClass || 'Other / unclear'));
+      const tags = uniqSorted(all.flatMap(r=>r.focusTags || []));
+      const routes = uniqSorted(all.flatMap(r=>r.routes || []));
+
+      makeFilter($('fPhasePanel'), 'phase', phases, state.phase, render);
+      makeFilter($('fModPanel'), 'modality', modalities, state.modality, render);
+      makeFilter($('fFamPanel'), 'family', families, state.family, render);
+      makeFilter($('fSuperFamPanel'), 'superfamily', superfams, state.superfamily, render);
+      makeFilter($('fTargetPanel'), 'target', targetsTop, state.target, render);
+      makeFilter($('fMoAPanel'), 'moaClass', moas, state.moaClass, render);
+      makeFilter($('fTagPanel'), 'tag', tags, state.tag, render);
+      makeFilter($('fRoutePanel'), 'route', routes, state.route, render);
+    }
+
+	    function attachListeners(){
+	      $('q').addEventListener('input', (e)=>{ state.q = e.target.value; render(); });
+
+      $('oppGroup').addEventListener('change', (e)=>{ state.oppGroup = e.target.value; render(); });
+      $('oppMetric').addEventListener('change', (e)=>{ state.oppMetric = e.target.value; render(); });
+
+      $('modeIbd').addEventListener('click', ()=>{
+        state.phaseMode='ibd';
+        state.phase.clear();
+        render();
+        toast('Phase mode: Context');
+      });
+      $('modeOverall').addEventListener('click', ()=>{
+        state.phaseMode='overall';
+        state.phase.clear();
+        render();
+        toast('Phase mode: Overall');
+      });
+
+      $('reset').addEventListener('click', ()=>{
+        state.q='';
+        state.phase.clear();
+        state.modality.clear();
+        state.family.clear();
+        state.superfamily.clear();
+        state.target.clear();
+        state.moaClass.clear();
+        state.tag.clear();
+        state.route.clear();
+        state.oppGroup = 'family';
+        state.oppMetric = 'lateStageRate';
+        render();
+        toast('Filters reset');
+      });
+
+      $('export').addEventListener('click', ()=> exportCSV(filtered()));
+
+	      $('dClose').addEventListener('click', closeDrawer);
+	      document.addEventListener('keydown', (e)=>{ if (e.key==='Escape') closeDrawer(); });
+
+	      $('insights')?.addEventListener('click', (e)=>{
+	        const tr = e.target?.closest?.('tr[data-opp-label]');
+	        if (!tr) return;
+	        const label = tr.getAttribute('data-opp-label') || '';
+	        const st = OPP_MAP.get(label);
+	        if (st) openOppDrawer(st);
+	      });
+	    }
+
+    // Basic runtime error surfacing (helps when opened in a restricted preview).
+    window.addEventListener('error', (e)=>{
+      try { toast(`JS error: ${e.message || 'unknown'}`); } catch {}
+    });
+    window.addEventListener('unhandledrejection', (e)=>{
+      try { toast(`JS rejection: ${e.reason?.message || e.reason || 'unknown'}`); } catch {}
+    });
+
+    initFilters();
+    attachListeners();
+    render();
+
+    // keep charts responsive
+    window.addEventListener('resize', ()=>{
+      window.clearTimeout(window.__rsz);
+      window.__rsz = window.setTimeout(render, 120);
+    });
+  </script>
+</body>
+</html>

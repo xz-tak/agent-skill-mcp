@@ -1,0 +1,12 @@
+[
+  {
+    "entity": "cardiac failure",
+    "field": "Adverse events",
+    "exactMatch": false
+  },
+  {
+    "entity": "hepatotoxicity",
+    "field": "Adverse events",
+    "exactMatch": true
+  }
+]

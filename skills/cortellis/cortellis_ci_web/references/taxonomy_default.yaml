@@ -1,0 +1,73 @@
+# Default taxonomy rules for CI dashboards
+# Extend/override by supplying a custom YAML to the generator script.
+
+phase_order:
+  - Unknown
+  - Preclinical
+  - IND filed
+  - Phase I
+  - Phase I/II
+  - Phase II
+  - Phase III
+  - Pre-registered
+  - Registered
+  - Marketed
+
+# Broad target types (aka superfamily)
+# Rules are evaluated in order; first match wins.
+target_type_rules:
+  - name: Microbiome
+    patterns: ["microbiome", "probiotic", "live bacterial", "fecal", "phage"]
+  - name: Cell therapy
+    patterns: ["car t", "treg", "stem cell", "mesenchymal", "cell therapy"]
+  - name: Integrin / adhesion
+    patterns: ["integrin", "madcam", "icam", "vcam", "selectin"]
+  - name: Kinase
+    patterns: ["janus kinase", '\bjak\d\b', '\btyk2\b', '\bripk\d\b', '\bmapk\b', "kinase"]
+  - name: GPCR / receptor
+    patterns: ['\bgpcr\b', '\breceptor\b', '\bs1pr\d\b', '\bccr\d\b', '\bcxcr\d\b']
+  - name: Cytokine / immune ligand
+    patterns: ["interleukin", '\btnf\b', '\btnfsf\d+\b', "cytokine"]
+  - name: Nuclear receptor
+    patterns: ["nuclear receptor", '\bahr\b', '\bfxr\b', '\bppar\b', '\bnr1h4\b']
+  - name: Enzyme (non-kinase)
+    patterns: ["phosphodiesterase", '\bpde\d\b', "protease", "enzyme"]
+  - name: Ion channel
+    patterns: ["ion channel", '\btrp\w+\b', "channel blocker", "channel"]
+  - name: Innate sensor / inflammasome
+    patterns: ["inflammasome", '\bnlrp\d+\b', '\btlr\d\b']
+  - name: Other
+    patterns: []
+
+# Fine-grained target families (extend as needed)
+# Rules are evaluated in order; may assign multiple families.
+target_family_rules:
+  - name: TNF
+    patterns: ["tumou?r necrosis factor", '\btnf\b']
+  - name: TL1A / TNFSF15
+    patterns: ['\btnfsf15\b', '\btl1a\b']
+  - name: IL-23
+    patterns: ['interleukin\s*23', '\bil23\b', '\bp19\b', '\bil23a\b']
+  - name: IL-12/23
+    patterns: ['interleukin\s*12', '\bil12a\b', '\bil12b\b', '\bp40\b']
+  - name: Integrins
+    patterns: ["integrin", "alpha4beta7", "alpha4beta1", "vla-4", "madcam"]
+  - name: JAK
+    patterns: ["janus kinase", '\bjak1\b', '\bjak2\b', '\bjak3\b']
+  - name: TYK2
+    patterns: ['\btyk2\b']
+  - name: S1P
+    patterns: ["sphingosine-1-phosphate", '\bs1pr\d\b']
+  - name: AHR
+    patterns: ["aryl hydrocarbon receptor", '\bahr\b']
+  - name: PDE4
+    patterns: ['\bpde4\b', 'phosphodiesterase\s*4']
+  - name: RIPK
+    patterns: ['\bripk1\b', '\bripk2\b']
+
+# Optional tag mapping (set to your analysis focus)
+# Each rule returns a tag label when a condition/indication matches.
+# Example:
+# focus_tag_rules:
+#   - tag: IBD
+#     patterns: ["inflammatory bowel disease", "crohn", "ulcerative colitis"]
