@@ -31,6 +31,7 @@ def retrieve_publications(
     include_unknown_if: bool = False,
     download_papers: bool = True,
     scrape_web_content: bool = False,
+    subscription_download_only: bool = False,
     subscription_only: bool = False,
     use_institutional_auth: bool = True,
     max_results: int = 1000,
@@ -53,10 +54,14 @@ def retrieve_publications(
         include_preprints: Include preprint servers
         include_unknown_if: If True, include papers with unknown impact factors.
                            If False (default), exclude papers without a known IF.
-        download_papers: Download PDFs when possible
+        download_papers: Download PDFs when possible (default mode)
         scrape_web_content: If True, extract omics from web content without downloading PDFs.
                            Uses Playwright to fetch HTML (PMC first, then publisher DOI).
                            Auto-fallback to PDF download if web scraping finds no accessions.
+        subscription_download_only: If True, hybrid mode that:
+                           - Free/open access papers: web-scrape only (no PDF download)
+                           - Subscription papers: download PDF with institutional auth
+                           This saves bandwidth/storage while still getting full-text from paywalled papers.
         subscription_only: If True, skip free papers and only download subscription papers
         use_institutional_auth: If True (default), use institutional access
                                credentials from .env for subscription papers
@@ -279,6 +284,60 @@ def retrieve_publications(
 
             # Check subscription status
             pub.requires_subscription = not downloader.has_free_access(pmc_id)
+
+        elif subscription_download_only:
+            # Hybrid mode: web-scrape free papers, download subscription papers
+            pmc_id = record.get("pmc_id")
+            doi = pub.doi
+            has_free = downloader.has_free_access(pmc_id)
+
+            logger.debug(f"PMID {pub.pmid}: Subscription-download mode (PMC: {pmc_id}, free: {has_free})")
+
+            if has_free:
+                # Free paper - web scrape only, no download
+                article_text = downloader.fetch_article_html(pmc_id, doi)
+
+                if article_text and len(article_text) > 1000:
+                    pub.web_scraped = True
+                    pub.free_access = True
+                    pub.requires_subscription = False
+
+                    if pmc_id:
+                        pmc_clean = pmc_id.replace("PMC", "") if pmc_id.startswith("PMC") else pmc_id
+                        pub.access_url = f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{pmc_clean}/"
+                    elif doi:
+                        pub.access_url = downloader.get_doi_url(doi) or f"https://doi.org/{doi}"
+                    else:
+                        pub.access_url = f"https://pubmed.ncbi.nlm.nih.gov/{pub.pmid}/"
+
+                    datasets = omics_extractor.extract_from_fetched_text(article_text)
+                    if datasets:
+                        pub.omics_datasets = omics_extractor.enrich_datasets(datasets)
+                        logger.info(f"PMID {pub.pmid}: Free paper web-scraped, extracted {len(datasets)} accessions")
+                    else:
+                        logger.info(f"PMID {pub.pmid}: Free paper web-scraped, no accessions found")
+                else:
+                    # Couldn't web-scrape free paper, mark as accessible but no extraction
+                    pub.free_access = True
+                    pub.requires_subscription = False
+                    pub.access_url = f"https://pubmed.ncbi.nlm.nih.gov/{pub.pmid}/"
+                    logger.info(f"PMID {pub.pmid}: Free paper, web-scrape failed, skipping download")
+            else:
+                # Subscription paper - download PDF
+                logger.info(f"PMID {pub.pmid}: Subscription paper, downloading PDF")
+                success, download_path, access_url, requires_sub = downloader.download_paper(
+                    record,
+                    use_institutional_auth=use_institutional_auth
+                )
+                pub.free_access = False
+                pub.requires_subscription = True
+                pub.download_path = download_path
+                pub.access_url = access_url
+
+                if success and download_path:
+                    datasets = omics_extractor.extract_from_pdf(download_path)
+                    pub.omics_datasets = omics_extractor.enrich_datasets(datasets)
+                    logger.info(f"PMID {pub.pmid}: Subscription paper downloaded, extracted {len(datasets)} accessions")
 
         else:
             # No full-text extraction mode (abstract only)

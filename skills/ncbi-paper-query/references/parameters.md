@@ -26,7 +26,8 @@
 |------|----------|-------------|
 | Abstract Only | `--abstract-only` | Extract omics accessions from abstract/title only (no full-text access required) |
 | Web Scrape | `--web-scrape` | Extract omics from web HTML using Playwright. Auto-fallback to PDF if no accessions found |
-| (Default) | (none) | Full PDF download mode - downloads and parses PDF full text |
+| Subscription Download | `--subscription-download` | Hybrid mode: web-scrape free/open access papers, download PDFs only for subscription papers. Saves bandwidth while getting paywalled content |
+| (Default) | (none) | Full PDF download mode - downloads and parses all PDF full text |
 
 ## Filter Flags
 
@@ -90,6 +91,20 @@ PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts python -m ncbi_paper_query 
     --output uc_study
 ```
 
+### Subscription Download Mode (Hybrid)
+```bash
+# Web-scrape free/open access papers, download PDFs only for subscription papers
+PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts python -m ncbi_paper_query \
+    --disease "hepatic fibrosis" \
+    --tissue liver \
+    --organism human \
+    --if-cutoff 7.0 \
+    --year-cutoff 2020 \
+    --max-results 100 \
+    --subscription-download \
+    --output liver_fibrosis_study
+```
+
 ### Full PDF Mode (with institutional access)
 ```bash
 PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts python -m ncbi_paper_query \
@@ -143,6 +158,7 @@ retrieve_publications(
     include_unknown_if: bool = False,
     download_papers: bool = True,  # False = abstract-only
     scrape_web_content: bool = False,  # True = web-scrape mode
+    subscription_download_only: bool = False,  # Hybrid: web-scrape free, download subscription
     subscription_only: bool = False,
     use_institutional_auth: bool = True,
     max_results: int = 1000,

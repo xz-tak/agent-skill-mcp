@@ -81,6 +81,8 @@ Output Structure (created in your current working directory):
                         help="Extract omics from abstract/title only (no full-text access)")
     parser.add_argument("--web-scrape", action="store_true",
                         help="Extract omics from web HTML without downloading PDFs. Uses Playwright to fetch article pages (PMC first, then publisher). Auto-fallback to PDF download if no accessions found.")
+    parser.add_argument("--subscription-download", action="store_true",
+                        help="Hybrid mode: web-scrape free/open access papers (no download), but download PDFs for subscription papers. Saves bandwidth while still getting paywalled content.")
     parser.add_argument("--subscription-only", action="store_true",
                         help="Only download subscription papers (skip free PMC papers). Requires VPN for institutional access.")
     parser.add_argument("--no-institutional-auth", action="store_true",
@@ -127,8 +129,9 @@ Output Structure (created in your current working directory):
         impact_factor_cutoff=args.if_cutoff,
         publication_date_cutoff=args.year_cutoff,
         max_results=args.max_results,
-        download_papers=not (args.abstract_only or args.web_scrape),
+        download_papers=not (args.abstract_only or args.web_scrape or args.subscription_download),
         scrape_web_content=args.web_scrape,
+        subscription_download_only=args.subscription_download,
         subscription_only=args.subscription_only,
         use_institutional_auth=not args.no_institutional_auth,
         include_preprints=not args.no_preprints,

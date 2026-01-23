@@ -34,7 +34,16 @@ PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts python -m ncbi_paper_query 
     --web-scrape \
     --output ibd_webscrape
 
-# PDF download mode (default - downloads PDFs for extraction)
+# Subscription-download mode (web-scrape free papers, download subscription only)
+PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts python -m ncbi_paper_query \
+    --disease "fibrosis" \
+    --tissue lung liver \
+    --organism human \
+    --max-results 100 \
+    --subscription-download \
+    --output fibrosis_hybrid
+
+# PDF download mode (default - downloads all PDFs)
 PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts python -m ncbi_paper_query \
     --disease "ulcerative colitis" \
     --tissue colon \
@@ -427,7 +436,7 @@ PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts python -m ncbi_paper_query 
     --if-cutoff [if_cutoff] \
     --year-cutoff [year_cutoff] \
     [--exact] \
-    [--abstract-only | --web-scrape] \
+    [--abstract-only | --web-scrape | --subscription-download] \
     [--keywords "term1" "term2" | --no-keywords] \
     --max-results [max_results] \
     --output [study_name] \
@@ -471,7 +480,8 @@ PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts python -m ncbi_paper_query 
 **Map extraction mode to flag:**
 - "Abstract only" → `--abstract-only`
 - "Web scrape" → `--web-scrape`
-- "PDF download" → (no flag, default behavior)
+- "Subscription download" → `--subscription-download` (web-scrape free papers, download subscription only)
+- "PDF download" → (no flag, default behavior - downloads all PDFs)
 
 **Map keyword options to flag:**
 - Default (omics keywords) → (no flag)
