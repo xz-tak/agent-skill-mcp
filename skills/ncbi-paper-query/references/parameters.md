@@ -44,14 +44,14 @@
 
 ## Credentials (.env file)
 
-For institutional/subscription paper access, credentials are loaded from `.env` file in the script directory (`/home/sagemaker-user/claude_code/ncbi_paper/.env`), NOT from shell environment variables.
+For institutional/subscription paper access, credentials are loaded from `.env` file in your **working directory** (where you run the command), NOT from the skill directory or shell environment variables.
 
 | Variable | Description |
 |----------|-------------|
 | `TAK_ACCOUNT` | Institutional email (also used as NCBI email for queries) |
 | `TAK_KEY` | Institutional SSO authentication key |
 
-Example `.env` file:
+Example `.env` file (create in your project directory):
 ```
 TAK_ACCOUNT=user@institution.com
 TAK_KEY=your_sso_key
@@ -59,61 +59,158 @@ TAK_KEY=your_sso_key
 
 ## Example Commands
 
+**Note:** Run all commands from your project directory. Set PYTHONPATH to find the package, and outputs will be saved to `./output/` in your current directory:
+
+```bash
+export PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts
+```
+
 ### Basic Query (Abstract Only)
 ```bash
-python ncbi_paper_retriever.py \
+PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts python -m ncbi_paper_query \
     --disease "Crohn's disease" \
     --tissue intestine colon ileum \
     --organism human \
     --if-cutoff 7.0 \
     --year-cutoff 2015 \
     --max-results 200 \
-    --abstract-only
+    --abstract-only \
+    --output crohn_study
 ```
 
 ### Web Scraping Mode
 ```bash
-python ncbi_paper_retriever.py \
+PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts python -m ncbi_paper_query \
     --disease "ulcerative colitis" \
     --tissue colon rectum \
     --organism human mouse \
     --if-cutoff 5.0 \
     --year-cutoff 2018 \
-    --web-scrape
+    --web-scrape \
+    --output uc_study
 ```
 
 ### Full PDF Mode (with institutional access)
 ```bash
-python ncbi_paper_retriever.py \
+PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts python -m ncbi_paper_query \
     --disease "pulmonary fibrosis" \
     --tissue lung \
     --organism human \
     --if-cutoff 10.0 \
     --year-cutoff 2020 \
-    --max-results 100
+    --max-results 100 \
+    --output fibrosis_study
+```
+
+### Python Import Usage
+
+**Note:** When importing as a Python module, first set PYTHONPATH:
+```bash
+export PYTHONPATH=~/.claude/skills/ncbi-paper-query/scripts
+```
+
+```python
+from ncbi_paper_query import retrieve_publications, PubMedSearcher
+
+# Full retrieval with all components
+results = retrieve_publications(
+    disease="Crohn's disease",
+    tissues=["intestine", "colon"],
+    organism=["human"],
+    impact_factor_cutoff=7.0,
+    publication_date_cutoff=2015,
+    max_results=200,
+    download_papers=False,  # Abstract-only mode
+    study_name="crohn_study"
+)
+
+# Or use individual components
+searcher = PubMedSearcher()
+pmids = searcher.search(["inflammatory bowel disease"], ["intestine"], ["human"])
+```
+
+**Function Signature:**
+```python
+retrieve_publications(
+    disease: str | List[str],      # Required: disease term(s)
+    tissues: List[str],            # Required: tissue/organ terms
+    organism: List[str] = None,    # Default: ["human", "mouse", "rat"]
+    cell_type: str = None,
+    keywords: List[str] = None,    # Default omics keywords
+    impact_factor_cutoff: float = 7.0,
+    publication_date_cutoff: int = 2015,
+    include_preprints: bool = True,
+    include_unknown_if: bool = False,
+    download_papers: bool = True,  # False = abstract-only
+    scrape_web_content: bool = False,  # True = web-scrape mode
+    subscription_only: bool = False,
+    use_institutional_auth: bool = True,
+    max_results: int = 1000,
+    study_name: str = None,        # Output directory name
+    output_format: str = "csv",
+    validation_rounds: int = 1,
+    exact_match: bool = False
+) -> pd.DataFrame
 ```
 
 ## Output
 
-Results are saved to CSV format in the `./output/` directory with timestamp:
-- `results_YYYYMMDD_HHMMSS.csv`
+When `--output {study_name}` is provided, results are saved to `./output/{study_name}/`:
 
-### Output Columns
+```
+./output/{study_name}/
+├── results.csv        # Main results with all paper metadata
+├── accessions.csv     # Omics accessions (one row per accession)
+├── failed_studies.csv # Papers that couldn't be accessed (if any)
+└── downloads/         # Downloaded PDFs (PDF mode only)
+```
+
+### results.csv Columns
 
 | Column | Description |
 |--------|-------------|
-| pmid | PubMed ID |
-| title | Publication title |
-| authors | Author list |
-| journal | Journal name |
-| year | Publication year |
-| impact_factor | Journal impact factor |
-| doi | Digital Object Identifier |
-| abstract | Paper abstract |
-| omics_accessions | Extracted accessions from all supported databases |
-| accession_type | Type of omics data |
-| omics_metadata | Enriched metadata from omics databases |
-| Download_Status | How content was accessed: Free, Downloaded, Full access without download, Not Downloaded |
+| PMID | PubMed ID |
+| Title | Publication title |
+| Authors | Author list |
+| Journal | Journal name |
+| Publication_Year | Publication year |
+| Impact_Factor | Journal impact factor (auto-corrected if year-like) |
+| DOI | Digital Object Identifier |
+| Abstract | Paper abstract (truncated to 500 chars) |
+| Omics_Accessions | Semicolon-separated accessions found |
+| Omics_Count | Number of accessions found |
+| Download_Status | How content was accessed |
+| Download_Path | Path to downloaded PDF (if applicable) |
+
+### accessions.csv Columns
+
+One row per accession for easy filtering:
+
+| Column | Description |
+|--------|-------------|
+| PMID | Source paper PubMed ID |
+| Title | Source paper title |
+| Journal | Source journal |
+| Publication_Year | Publication year |
+| Accession | Dataset accession (e.g., GSE134809) |
+| Database | Database type (GEO, SRA, ArrayExpress, etc.) |
+| Technology | Omics technology (RNA-seq, scRNA-seq, etc.) |
+| Organism | Species |
+| Sample_Count | Number of samples |
+| Condition_Counts | Condition breakdown |
+| Data_URL | Direct link to dataset |
+
+### failed_studies.csv Columns
+
+Created when papers cannot be downloaded:
+
+| Column | Description |
+|--------|-------------|
+| PMID | PubMed ID of inaccessible paper |
+| Title | Publication title |
+| Journal | Journal name |
+| DOI | Digital Object Identifier |
+| Failure_Reason | Why access failed (e.g., "Paywall", "No PDF available") |
 
 ### Download Status Values
 
@@ -184,7 +281,7 @@ Impact factors are retrieved via web search (not hardcoded) in this order:
 | Cache | `.if_cache.json` | Cached results from web searches |
 | Web Search | bioxbio.com | Live lookup for journals not in reference or cache |
 
-To update IF values, edit `journal_if.json` in the script directory (`/home/sagemaker-user/claude_code/ncbi_paper/`).
+To update IF values, edit `journal_if.json` in `~/.claude/skills/ncbi-paper-query/scripts/ncbi_paper_query/data/`.
 
 ## Validation & Auto-Correction
 
