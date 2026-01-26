@@ -25,6 +25,9 @@ suppressPackageStartupMessages({
   library(jsonlite)
 })
 
+# Set global random seed for reproducibility
+set.seed(42)
+
 # ==============================================================================
 # Parameter Parsing
 # ==============================================================================
@@ -584,7 +587,7 @@ extract_results_list <- function(dds, contrast_spec, list_values, comp_name, gen
 # Enrichment Analysis
 # ==============================================================================
 
-run_gsea_gobp <- function(res, species_config, pval_cutoff = 0.05) {
+run_gsea_gobp <- function(res, species_config, pval_cutoff = 1) {
   # Create ranked gene list
   res_clean <- res[!is.na(res$padj) & !is.na(res$log2FoldChange), ]
 
@@ -602,6 +605,8 @@ run_gsea_gobp <- function(res, species_config, pval_cutoff = 0.05) {
       ont = "BP",
       keyType = "SYMBOL",
       pvalueCutoff = pval_cutoff,
+      minGSSize = 3,
+      maxGSSize = Inf,
       verbose = FALSE
     )
     return(gsea_res)
@@ -670,7 +675,7 @@ flatten_list_columns <- function(df) {
 # GSEA with Custom Gene Sets (MSigDB + Custom signatures)
 # ==============================================================================
 
-run_gsea_custom <- function(res, gene_sets, gene_set_sources, pval_cutoff = 0.05) {
+run_gsea_custom <- function(res, gene_sets, gene_set_sources, pval_cutoff = 1) {
   if (length(gene_sets) == 0) {
     return(NULL)
   }
@@ -692,6 +697,8 @@ run_gsea_custom <- function(res, gene_sets, gene_set_sources, pval_cutoff = 0.05
       geneList = gene_list,
       TERM2GENE = term2gene,
       pvalueCutoff = pval_cutoff,
+      minGSSize = 3,
+      maxGSSize = Inf,
       verbose = FALSE
     )
 

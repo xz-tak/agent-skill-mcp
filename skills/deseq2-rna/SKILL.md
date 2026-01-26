@@ -466,6 +466,10 @@ Interactive HTML plots are automatically generated alongside static PNG plots. T
 
 ## Reproducibility
 
+**Global random seed:** Both analysis scripts use `set.seed(42)` for reproducible GSEA results.
+
+**GSEA parameters:** `minGSSize = 3`, `maxGSSize = Inf` (no gene set size filtering).
+
 After analysis completes, a reproducible R script is automatically saved:
 
 - **File**: `{output_dir}/{prefix}_reproducible.R`
@@ -518,10 +522,19 @@ Use these functions when users request:
 
 | Function | Purpose | Primary Inputs |
 |----------|---------|----------------|
-| `plot_signature_heatmap()` | NES heatmap (signatures × comparisons) | GSEA results file |
+| `plot_signature_heatmap()` | NES heatmap (signatures × comparisons) | GSEA results file OR rerun GSEA |
 | `plot_deg_heatmap()` | log2FC heatmap (genes × comparisons) | DEG summary stats file |
 | `plot_expression_heatmap()` | Z-scored expression (genes × samples) | Expression matrix, metadata |
-| `plot_gsva_boxplot()` | GSVA scores by treatment group | GSVA matrix, metadata |
+| `plot_gsva_boxplot()` | GSVA scores by treatment group | GSVA matrix, metadata OR rerun GSVA |
+
+### Rerun GSEA/GSVA Option
+
+Both `plot_signature_heatmap()` and `plot_gsva_boxplot()` support rerunning GSEA/GSVA analysis instead of using pre-computed results. This is useful when:
+- You want to analyze new custom gene sets not in the original analysis
+- You want to recalculate scores with different parameters
+- You're working with data from a different source
+
+**IMPORTANT:** GSEA pipeline saves ALL results (including non-significant) to output files. Dotplots filter for significance internally.
 
 ### Script Location
 
@@ -551,10 +564,26 @@ plot_signature_heatmap(
 For each function, Claude should collect from user:
 
 **plot_signature_heatmap:**
-- GSEA results file path
+- **Use existing data OR rerun analysis** (ask first!)
+  - If existing: GSEA results file path
+  - If rerun: DEG summary stats file path + gene_sets (named list)
 - Signature names to include
 - Source filter (CUSTOM, GO:BP, H, C2, etc.)
 - Output path
+
+**New parameters for rerun_gsea:**
+```r
+plot_signature_heatmap(
+  gsea_data = NULL,           # NULL when rerunning
+  rerun_gsea = TRUE,          # Enable rerun mode
+  deg_data = "path/to/summstats.txt",  # DEG results
+  gene_sets = list(           # Named list of gene sets
+    sig1 = c("GENE1", "GENE2"),
+    sig2 = readLines("sig.txt")
+  ),
+  pval_cutoff = 1             # Include all results (default)
+)
+```
 
 **plot_deg_heatmap:**
 - DEG summary stats file path
@@ -570,13 +599,59 @@ For each function, Claude should collect from user:
 - Output path
 
 **plot_gsva_boxplot:**
-- GSVA data (RDS or matrix file)
+- **Use existing data OR rerun analysis** (ask first!)
+  - If existing: GSVA data (RDS or matrix file)
+  - If rerun: Counts data file path + gene_sets (named list)
 - Metadata file
 - Signature names
 - Group column name
 - Statistical method (adaptive/kruskal/none)
 - Max pairs to display
 - Output path
+
+**New parameters for rerun_gsva:**
+```r
+plot_gsva_boxplot(
+  gsva_data = NULL,           # NULL when rerunning
+  rerun_gsva = TRUE,          # Enable rerun mode
+  counts_data = "path/to/counts.rds",  # Expression/counts matrix
+  gene_sets = list(           # Named list of gene sets
+    sig1 = c("GENE1", "GENE2"),
+    sig2 = readLines("sig.txt")
+  ),
+  kcdf = "auto"               # Auto-detect: "Poisson" for integers, "Gaussian" for normalized
+)
+```
+
+**kcdf auto-detection:** The function automatically detects whether input is integer counts (uses "Poisson") or normalized values (uses "Gaussian") based on whether all values equal their floor.
+
+### AskUserQuestion Workflow for Rerun Options
+
+When Claude is asked to generate GSVA boxplots or NES heatmaps, Claude MUST use `AskUserQuestion` tool:
+
+**Question 1: Data Source**
+```
+header: "Data source"
+question: "Use existing pre-computed results or rerun analysis?"
+options:
+  - label: "Use existing results (Recommended)"
+    description: "Use pre-computed GSVA/GSEA scores from analysis RDS file"
+  - label: "Rerun analysis"
+    description: "Recompute GSVA/GSEA scores with new gene sets or matrix"
+```
+
+**If "Use existing results":**
+- Read gsva_scores/gsea results from the RDS/text file
+- No additional questions needed
+
+**If "Rerun analysis" - Question 2 (GSVA only): Input Matrix**
+```
+header: "Input matrix"
+question: "Which counts/expression matrix file should be used for GSVA?"
+options: [list available .rds/.txt files in data directory]
+```
+
+**Note:** For GSVA, kcdf is auto-detected - no manual question needed.
 
 ### Output Files
 

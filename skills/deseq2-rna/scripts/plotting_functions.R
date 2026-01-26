@@ -34,6 +34,9 @@ suppressPackageStartupMessages({
   library(htmlwidgets) # For saving HTML widgets
 })
 
+# Set global random seed for reproducibility
+set.seed(42)
+
 # =============================================================================
 # Helper Functions
 # =============================================================================
@@ -91,6 +94,95 @@ create_bwr_colormap <- function(values, symmetric = TRUE) {
   }
 
   colorRamp2(breaks, c("blue", "white", "red"))
+}
+
+# =============================================================================
+# Internal functions for rerunning GSEA/GSVA (matching DEG pipeline methods)
+# =============================================================================
+
+#' Run GSEA for plotting (mirrors run_gsea_custom from deseq2_analysis.R)
+#' @param deg_df Data frame with DEG results (must have padj, log2FoldChange, symbol columns)
+#' @param gene_sets Named list of gene sets (character vectors of gene symbols)
+#' @param pval_cutoff P-value cutoff for GSEA (default: 1 to include all results)
+#' @return Data frame with GSEA results
+run_gsea_for_plot <- function(deg_df, gene_sets, pval_cutoff = 1) {
+  if (!requireNamespace("clusterProfiler", quietly = TRUE)) {
+    stop("clusterProfiler package required for rerunning GSEA")
+  }
+
+  # Create ranked gene list (same method as DEG pipeline)
+  res_clean <- deg_df[!is.na(deg_df$padj) & !is.na(deg_df$log2FoldChange), ]
+
+  # Handle symbol column (might be 'symbol' or 'gene')
+  symbol_col <- if ("symbol" %in% colnames(res_clean)) "symbol" else "gene"
+
+  gene_list <- -log10(res_clean$padj + 1e-300) * sign(res_clean$log2FoldChange)
+  names(gene_list) <- res_clean[[symbol_col]]
+  gene_list <- sort(gene_list, decreasing = TRUE)
+  gene_list <- gene_list[!duplicated(names(gene_list))]
+
+  # Create TERM2GENE data frame
+  term2gene <- do.call(rbind, lapply(names(gene_sets), function(term) {
+    data.frame(term = term, gene = gene_sets[[term]], stringsAsFactors = FALSE)
+  }))
+
+  tryCatch({
+    gsea_res <- clusterProfiler::GSEA(
+      geneList = gene_list,
+      TERM2GENE = term2gene,
+      pvalueCutoff = pval_cutoff,
+      minGSSize = 3,
+      maxGSSize = Inf,
+      verbose = FALSE
+    )
+
+    if (is.null(gsea_res) || nrow(gsea_res@result) == 0) {
+      warning("No GSEA results returned")
+      return(NULL)
+    }
+
+    result_df <- gsea_res@result
+    result_df$source <- "CUSTOM"  # Mark as custom
+    return(result_df)
+  }, error = function(e) {
+    warning(paste("GSEA failed:", e$message))
+    return(NULL)
+  })
+}
+
+#' Run GSVA for plotting (mirrors run_gsva from deseq2_analysis.R)
+#' @param counts_mat Expression/counts matrix (genes as rows, samples as columns)
+#' @param gene_sets Named list of gene sets (character vectors of gene symbols)
+#' @param kcdf Kernel cumulative distribution function: "auto" (default), "Poisson" (integer counts), or "Gaussian" (normalized)
+#' @return Matrix of GSVA scores (signatures as rows, samples as columns)
+run_gsva_for_plot <- function(counts_mat, gene_sets, kcdf = "auto") {
+  if (!requireNamespace("GSVA", quietly = TRUE)) {
+    stop("GSVA package required for rerunning GSVA")
+  }
+
+  # Auto-detect kcdf if not specified
+  if (kcdf == "auto") {
+    # Check if matrix contains only integers
+    is_integer_counts <- all(counts_mat == floor(counts_mat), na.rm = TRUE)
+    kcdf <- if (is_integer_counts) "Poisson" else "Gaussian"
+    message(paste("Auto-detected kcdf:", kcdf,
+                  "(", if(is_integer_counts) "integer counts" else "normalized values", ")"))
+  }
+
+  tryCatch({
+    # Use GSVA 2.0+ API
+    gsva_param <- GSVA::gsvaParam(
+      exprData = counts_mat,
+      geneSets = gene_sets,
+      kcdf = kcdf,
+      maxDiff = TRUE
+    )
+    gsva_scores <- GSVA::gsva(gsva_param, verbose = FALSE)
+    return(gsva_scores)
+  }, error = function(e) {
+    warning(paste("GSVA failed:", e$message))
+    return(NULL)
+  })
 }
 
 #' Get static PNG output path in expr_comp_heatmap_boxplot subfolder
@@ -185,7 +277,7 @@ get_stats_path <- function(output_file, suffix = "_pairwise_stats") {
 #' Cell colors represent NES values (blue-white-red centered at 0).
 #' Significance annotations (*,**,***,****) based on adjusted p-values.
 #'
-#' @param gsea_data Either a file path to GSEA results table or data.frame/RDS object
+#' @param gsea_data Either a file path to GSEA results table, data.frame/RDS object, or NULL if rerun_gsea=TRUE
 #' @param signatures Character vector of signature names to include (NULL = all)
 #' @param output_file Output file path (PNG)
 #' @param nes_col Column name for NES values (default: "NES")
@@ -204,10 +296,15 @@ get_stats_path <- function(output_file, suffix = "_pairwise_stats") {
 #' @param show_col_names Show column names (default: TRUE)
 #' @param row_names_max_width Max width for row names (default: 20)
 #' @param col_names_max_height Max height for column names (default: 15)
+#' @param interactive Generate interactive HTML version (default: TRUE)
+#' @param rerun_gsea If TRUE, run GSEA instead of using existing data (default: FALSE)
+#' @param deg_data Required if rerun_gsea=TRUE: file path to DEG results (summstats file)
+#' @param gene_sets Required if rerun_gsea=TRUE: named list of gene sets (character vectors)
+#' @param pval_cutoff P-value cutoff for GSEA when rerunning (default: 1 to include all results)
 #' @return Invisibly returns the Heatmap object
 #' @export
 plot_signature_heatmap <- function(
-    gsea_data,
+    gsea_data = NULL,
     signatures = NULL,
     output_file = "figures/signature_NES_heatmap.png",
     nes_col = "NES",
@@ -226,17 +323,78 @@ plot_signature_heatmap <- function(
     show_col_names = TRUE,
     row_names_max_width = 20,
     col_names_max_height = 15,
-    interactive = TRUE
+    interactive = TRUE,
+    rerun_gsea = FALSE,
+    deg_data = NULL,
+    gene_sets = NULL,
+    pval_cutoff = 1
 ) {
-  # Load data
-  if (is.character(gsea_data)) {
-    if (grepl("\\.rds$", gsea_data, ignore.case = TRUE)) {
-      gsea_df <- readRDS(gsea_data)
-    } else {
-      gsea_df <- read.delim(gsea_data, stringsAsFactors = FALSE)
+  # Handle rerun_gsea case
+  if (rerun_gsea) {
+    if (is.null(deg_data)) {
+      stop("deg_data is required when rerun_gsea=TRUE")
     }
+    if (is.null(gene_sets) || length(gene_sets) == 0) {
+      stop("gene_sets is required when rerun_gsea=TRUE (named list of character vectors)")
+    }
+
+    message("Running GSEA with provided gene sets...")
+
+    # Load DEG data
+    if (is.character(deg_data)) {
+      if (grepl("\\.rds$", deg_data, ignore.case = TRUE)) {
+        deg_df <- readRDS(deg_data)
+      } else {
+        deg_df <- read.delim(deg_data, stringsAsFactors = FALSE)
+      }
+    } else {
+      deg_df <- as.data.frame(deg_data)
+    }
+
+    # Run GSEA for each comparison if comparison column exists
+    if (comp_col %in% colnames(deg_df)) {
+      comparisons <- unique(deg_df[[comp_col]])
+      all_results <- list()
+
+      for (comp in comparisons) {
+        comp_deg <- deg_df[deg_df[[comp_col]] == comp, ]
+        comp_gsea <- run_gsea_for_plot(comp_deg, gene_sets, pval_cutoff)
+        if (!is.null(comp_gsea)) {
+          comp_gsea[[comp_col]] <- comp
+          all_results[[comp]] <- comp_gsea
+        }
+      }
+
+      if (length(all_results) == 0) {
+        stop("No GSEA results returned for any comparison")
+      }
+      gsea_df <- do.call(rbind, all_results)
+    } else {
+      # Single comparison
+      gsea_df <- run_gsea_for_plot(deg_df, gene_sets, pval_cutoff)
+      if (is.null(gsea_df)) {
+        stop("No GSEA results returned")
+      }
+      gsea_df[[comp_col]] <- "comparison"
+    }
+
+    message(paste("GSEA completed:", nrow(gsea_df), "results"))
+
   } else {
-    gsea_df <- as.data.frame(gsea_data)
+    # Original behavior: load existing data
+    if (is.null(gsea_data)) {
+      stop("gsea_data is required when rerun_gsea=FALSE")
+    }
+
+    if (is.character(gsea_data)) {
+      if (grepl("\\.rds$", gsea_data, ignore.case = TRUE)) {
+        gsea_df <- readRDS(gsea_data)
+      } else {
+        gsea_df <- read.delim(gsea_data, stringsAsFactors = FALSE)
+      }
+    } else {
+      gsea_df <- as.data.frame(gsea_data)
+    }
   }
 
   # Filter by source if specified
@@ -945,9 +1103,9 @@ plot_expression_heatmap <- function(
 #' Includes adaptive statistical comparisons: Levene's test for equal variance,
 #' then ANOVA + Tukey HSD (if equal) or Welch's ANOVA + Games-Howell (if unequal).
 #'
-#' @param gsva_data Either file path, RDS path, or matrix of GSVA scores
+#' @param gsva_data Either file path, RDS path, matrix of GSVA scores, or NULL if rerun_gsva=TRUE
 #' @param metadata Either file path or data.frame of sample metadata
-#' @param signatures Character vector of signature names to plot
+#' @param signatures Character vector of signature names to plot (used as names for gene_sets if rerun_gsva=TRUE)
 #' @param group_col Column name in metadata for sample grouping (default: "Treatment")
 #' @param sample_col Column name in metadata for sample IDs (default: "Sample.ID")
 #' @param output_file Output file path (PNG)
@@ -967,10 +1125,15 @@ plot_expression_heatmap <- function(
 #' @param hide_ns Hide non-significant comparisons (default: TRUE)
 #' @param max_pairs Maximum number of significant pairs to display on plot (default: 10)
 #' @param export_stats Export full pairwise statistics to TSV file (default: TRUE)
+#' @param interactive Generate interactive HTML version (default: TRUE)
+#' @param rerun_gsva If TRUE, run GSVA instead of using existing data (default: FALSE)
+#' @param counts_data Required if rerun_gsva=TRUE: expression/counts matrix file path or matrix
+#' @param gene_sets Required if rerun_gsva=TRUE: named list of gene sets (character vectors)
+#' @param kcdf Kernel cumulative distribution function for GSVA: "auto" (default), "Poisson" (integer counts), or "Gaussian" (normalized)
 #' @return Invisibly returns the ggplot object
 #' @export
 plot_gsva_boxplot <- function(
-    gsva_data,
+    gsva_data = NULL,
     metadata,
     signatures,
     group_col = "Treatment",
@@ -990,25 +1153,87 @@ plot_gsva_boxplot <- function(
     hide_ns = TRUE,
     max_pairs = 10,
     export_stats = TRUE,
-    interactive = TRUE
+    interactive = TRUE,
+    rerun_gsva = FALSE,
+    counts_data = NULL,
+    gene_sets = NULL,
+    kcdf = "auto"
 ) {
-  # Load GSVA data
-  if (is.character(gsva_data)) {
-    if (grepl("\\.rds$", gsva_data, ignore.case = TRUE)) {
-      rds_data <- readRDS(gsva_data)
-      # Try to extract GSVA scores from RDS
-      if ("gsva_scores" %in% names(rds_data)) {
-        gsva_mat <- rds_data$gsva_scores
-      } else if (is.matrix(rds_data) || is.data.frame(rds_data)) {
-        gsva_mat <- as.matrix(rds_data)
+  # Handle rerun_gsva case
+  if (rerun_gsva) {
+    if (is.null(counts_data)) {
+      stop("counts_data is required when rerun_gsva=TRUE")
+    }
+    if (is.null(gene_sets) || length(gene_sets) == 0) {
+      stop("gene_sets is required when rerun_gsva=TRUE (named list of character vectors)")
+    }
+
+    message("Running GSVA with provided gene sets...")
+
+    # Load counts data
+    if (is.character(counts_data)) {
+      if (grepl("\\.rds$", counts_data, ignore.case = TRUE)) {
+        rds_data <- readRDS(counts_data)
+        # Try to extract counts matrix from RDS
+        if ("counts" %in% names(rds_data)) {
+          counts_mat <- rds_data$counts
+        } else if ("normalized_counts" %in% names(rds_data)) {
+          counts_mat <- rds_data$normalized_counts
+        } else if ("dds" %in% names(rds_data)) {
+          # Extract counts from DESeqDataSet
+          counts_mat <- DESeq2::counts(rds_data$dds, normalized = FALSE)
+          mode(counts_mat) <- "integer"
+          message("Extracted raw counts from DESeqDataSet")
+        } else if ("vsd" %in% names(rds_data)) {
+          # Use VST-transformed data (normalized)
+          counts_mat <- SummarizedExperiment::assay(rds_data$vsd)
+          message("Using VST-transformed data (normalized)")
+        } else if (is.matrix(rds_data) || is.data.frame(rds_data)) {
+          counts_mat <- as.matrix(rds_data)
+        } else {
+          stop("Could not find counts matrix in RDS file. Expected: counts, normalized_counts, dds, or vsd")
+        }
       } else {
-        stop("Could not find GSVA scores in RDS file")
+        counts_mat <- as.matrix(read.delim(counts_data, row.names = 1))
       }
     } else {
-      gsva_mat <- as.matrix(read.delim(gsva_data, row.names = 1))
+      counts_mat <- as.matrix(counts_data)
     }
+
+    # Run GSVA
+    gsva_mat <- run_gsva_for_plot(counts_mat, gene_sets, kcdf)
+    if (is.null(gsva_mat)) {
+      stop("GSVA failed to return results")
+    }
+
+    message(paste("GSVA completed:", nrow(gsva_mat), "signatures x", ncol(gsva_mat), "samples"))
+
+    # Update signatures to use gene_sets names (what we actually computed)
+    signatures <- names(gene_sets)
+
   } else {
-    gsva_mat <- as.matrix(gsva_data)
+    # Original behavior: load existing data
+    if (is.null(gsva_data)) {
+      stop("gsva_data is required when rerun_gsva=FALSE")
+    }
+
+    if (is.character(gsva_data)) {
+      if (grepl("\\.rds$", gsva_data, ignore.case = TRUE)) {
+        rds_data <- readRDS(gsva_data)
+        # Try to extract GSVA scores from RDS
+        if ("gsva_scores" %in% names(rds_data)) {
+          gsva_mat <- rds_data$gsva_scores
+        } else if (is.matrix(rds_data) || is.data.frame(rds_data)) {
+          gsva_mat <- as.matrix(rds_data)
+        } else {
+          stop("Could not find GSVA scores in RDS file")
+        }
+      } else {
+        gsva_mat <- as.matrix(read.delim(gsva_data, row.names = 1))
+      }
+    } else {
+      gsva_mat <- as.matrix(gsva_data)
+    }
   }
 
   # Load metadata
