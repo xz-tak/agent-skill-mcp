@@ -1,6 +1,6 @@
 ---
 name: target-prioritization-report
-description: Create and maintain a traceable target-prioritization pipeline (loaders + scoring) and generate a single-file, fully offline interactive HTML report with the same style/layout as the GI2 combo prioritization report. Use when asked to (1) map redesign requirements into a concrete plan and implementation, (2) wire data loaders for `results/*` artifacts, (3) implement/adjust scoring (Clinical/Disease/Safety/Opportunity/Novelty; CI is folded into Opportunity), or (4) generate a standalone report that embeds Plotly HTML figures and markdown interpretation for any indication/target set.
+description: Create and maintain a traceable target-prioritization pipeline (loaders + scoring) and generate single-file, fully offline interactive HTML reports with the GI2 combo prioritization style/layout. Use when asked to (1) map redesign requirements into a concrete plan and implementation, (2) wire data loaders for `results/*` artifacts, (3) implement/adjust scoring (Clinical/Disease/Safety/Opportunity/Novelty; CI is folded into Opportunity), (4) generate a standalone per‑indication report that embeds Plotly HTML figures and markdown interpretation, or (5) stitch multiple per‑indication offline reports into one portfolio summary HTML (final compilation step).
 ---
 
 # Target Prioritization Report
@@ -194,15 +194,42 @@ When adapting to a new indication:
 - Keep the HTML template stable (use `assets/combo_prioritization_report_template.html`).
 - Ensure the scoring contract in `references/scoring-contract.md` matches the pipeline you implement (treat the GI2 design doc as an example snapshot).
 
+## Portfolio Summary Report (Final Stitch Step)
+Use this when the “basic reports” already exist and you want a **single standalone portfolio report** that knits them together:
+
+- Inputs: multiple per‑indication `*_Combo_Prioritization_Report_offline.html` files (already fully offline)
+- Output: `GI2_Combo_Portfolio_Report_offline.html` (single file, fully offline, no external reads)
+- Requirements (high level):
+  - Embed each per‑indication report inside the portfolio HTML (no runtime file reads)
+  - Indication tabs use **page mode only**: auto-size the embedded report iframe height to content so the **portfolio page scrolls naturally** (no “constrained viewer” mode)
+  - Rewrite “Built by …” to the configured name (default: **Xinghao Zhang**)
+  - Enforce consistent titles: `<Indication> Combination Prioritization Report`
+  - Rewrite each embedded report’s Executive Summary to include **only**:
+    1) Scoring weights
+    2) Top combinations (by Overall score)
+  - Summary tab uses the reference layout: Executive Summary + overlap matrices + interactive pie hover tooltip
+  - Heatmap scale is **fixed 0–100** with **0=red, 50=yellow, 100=green** and smooth gradients between
+  - Heatmap QA: if any score-table column is constant (`max == min`), the heatmap fill for that column must be neutral (no background) to avoid misleading color
+
+Primary docs + artifacts:
+- `references/portfolio-summary-report.md` (what this is, required behaviors, required layout)
+- `references/portfolio-summary-prompt.md` (copy/paste prompt for future projects)
+- `scripts/build_combo_portfolio_report.py` (stitcher script to generate the portfolio report)
+- `<WORKDIR>/GI2_Combo_Portfolio_Report_final_v4.html` (visual/layout contract for the portfolio report)
+
 ## Bundled Resources
 - `scripts/clone_report_tool.py`: generate a new report-tool scaffold for a new indication/target set (and initialize `PLAN.md`).
 - `scripts/validate_results_tree.py`: validate required artifacts exist for a configured run (fast existence check).
+- `scripts/build_combo_portfolio_report.py`: build the **portfolio** report from multiple per‑indication offline HTML reports (final stitch step).
 - `references/plan-and-design.md`: how to turn requirements into an implementation-ready design + workflow mapping.
 - `references/results-contract.md`: artifact naming/paths contract (abstract, configurable).
 - `references/scoring-contract.md`: scoring formulas + combo aggregation rules + CI weighting.
 - `references/report-generation.md`: offline Plotly embedding + HTML template integration.
+- `references/portfolio-summary-report.md`: portfolio stitcher requirements + layout contract.
+- `references/portfolio-summary-prompt.md`: future-project prompt (explicit layout + constraints).
 - `assets/combo_prioritization_report_template.html`: the reference HTML template (layout/colors/JS).
 - `assets/example_report_offline.html`: example output artifact for visual QA (do not treat as a data source).
+- `<WORKDIR>/GI2_Combo_Portfolio_Report_final_v4.html`: example portfolio output artifact for visual QA (layout + interactions contract).
 
 ## Quick Start (Existing Pipeline)
 1) Confirm `<WORKDIR>/target_prioritization/` and `<WORKDIR>/tools/` exist.
