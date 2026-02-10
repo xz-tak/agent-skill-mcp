@@ -1,0 +1,18 @@
+{
+  "name": "agent-skill-mcp",
+  "version": "0.1",
+  "description": "Biomedical analysis skills for Claude Code - gene expression, knowledge graphs, single-cell analysis, and more",
+  "author": {
+    "name": "tak-xz",
+    "url": "https://github.com/tak-xz"
+  },
+  "repository": "https://github.com/tak-xz/agent-skill-mcp",
+  "keywords": [
+    "biomedical",
+    "bioinformatics",
+    "gene-expression",
+    "single-cell",
+    "knowledge-graph",
+    "drug-discovery"
+  ]
+}

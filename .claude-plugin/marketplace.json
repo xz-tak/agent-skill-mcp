@@ -1,0 +1,17 @@
+{
+  "name": "agent-skill-mcp",
+  "owner": {
+    "name": "tak-xz",
+    "url": "https://github.com/tak-xz"
+  },
+  "plugins": [
+    {
+      "name": "biomedical-skills",
+      "source": "./",
+      "description": "Xinghao's biomedical analysis toolkit",
+      "version": "0.1",
+      "category": "computational-biology",
+      "tags": ["biomedical", "genomics", "drug-discovery"]
+    }
+  ]
+}
