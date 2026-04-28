@@ -2,6 +2,34 @@
 
 A collection of self-developed Claude Code skills and Model Context Protocol (MCP) servers for biomedical data analysis and computational biology workflows.
 
+## Installation
+
+### Via Claude Code Plugin System
+
+```
+/plugin marketplace add tak-xz/agent-skill-mcp
+/plugin install biomedical-skills@agent-skill-mcp
+```
+
+### Manual Installation
+
+```bash
+# Clone to plugins directory
+git clone https://github.com/xz-tak/agent-skill-mcp.git ~/.claude/plugins/marketplaces/agent-skill-mcp
+
+# Or clone to project-local plugins
+git clone https://github.com/xz-tak/agent-skill-mcp.git ./.claude/plugins/agent-skill-mcp
+```
+
+### Standalone Skills (No Plugin System)
+
+```bash
+# Copy specific skills to user's skills directory
+git clone https://github.com/xz-tak/agent-skill-mcp.git /tmp/agent-skill-mcp
+cp -r /tmp/agent-skill-mcp/skills/archs4 ~/.claude/skills/
+cp -r /tmp/agent-skill-mcp/skills/cellxgene ~/.claude/skills/
+```
+
 ## Overview
 
 This repository contains custom-built tools that extend Claude's capabilities for biomedical research, enabling seamless integration with biological databases, knowledge graphs, and analysis pipelines.
@@ -16,82 +44,69 @@ agent-skill-mcp/
 
 ## Skills
 
-Claude Code skills provide specialized workflows and domain knowledge for specific tasks:
+Claude Code skills provide specialized workflows and domain knowledge for specific tasks.
 
-### 1. **ARCHS4** (`skills/archs4/`)
-Query and analyze gene expression data from the ARCHS4 database:
-- Expression atlas for 72+ human/mouse tissues
-- Multi-gene expression analysis with visualization
-- Gene correlation and co-expression analysis
-- Differential expression in specific contexts
-- Disease and treatment-specific sample queries
-- Smart tissue filtering with typo tolerance
+### Single-Cell RNA-seq
 
-### 2. **CellChat** (`skills/cellchat/`)
-CellChat cell-cell communication analysis for single-cell RNA-seq data:
-- End-to-end workflow for inferring ligand-receptor interactions
-- Multi-condition comparative analysis
-- CellChatDB v2 with human/mouse support
-- Comprehensive visualizations (heatmaps, circle plots, bubble plots)
-- Differential signaling and pathway analysis
+| Skill | Description |
+|-------|-------------|
+| [CELLxGENE Census](skills/cellxgene/) | Query and download expression data from CELLxGENE Census with flexible metadata filtering, cell type marker extraction, and specificity analysis |
+| [CellChat](skills/cellchat/) | Cell-cell communication analysis: ligand-receptor interaction inference, multi-condition comparison, CellChatDB v2 |
+| [CyteType](skills/cytetype/) | Automated cell type annotation using multi-agent AI architecture with GPU-aware compute, 3-agent consensus, and confidence scoring |
+| [PopV](skills/popv/) | PopV SCDS2 consensus cell-type annotation pipeline with multiple classifiers (scVI, scanVI, CellTypist) |
+| [scGPT](skills/scgpt/) | Generative pre-trained transformer for single-cell biology: gene expression prediction, in silico perturbation, cell embedding |
+| [scimilarity](skills/scimilarity/) | Single-cell foundation model for cell embedding, annotation, search across reference atlases, and gene interpretation |
+| [Geneformer](skills/geneformer/) | Foundational transformer pretrained on ~104M single-cell transcriptomes for context-aware predictions in network biology |
+| [Pseudobulk DEG + Speckle](skills/pseudobulkdge-speckle/) | Pseudobulk differential expression (scran/edgeR), pathway enrichment (fgsea), and differential cell composition (speckle) |
+| [Disease Module Analysis](skills/disease-module-analysis/) | Disease module training/transformation, gene set enrichment, perturbation enrichment, and regulator identification |
+| [ReCoN Multinetwork](skills/recon-multinetwork/) | Multicellular coordination network analysis integrating GRNs with cell-cell communication from scRNA-seq and optional scATAC-seq |
 
-### 3. **CELLxGENE Census** (`skills/cellxgene/`)
-Comprehensive toolkit for working with single-cell RNA-seq data from CELLxGENE Census:
-- **Query subskill**: Download and filter expression data with flexible metadata filtering
-- **Specificity subskill**: Extract cell type marker genes and analyze expression specificity
-- Gene coexpression analysis with visualization
+### Bulk RNA-seq
 
-### 4. **Cortellis** (`skills/cortellis/`)
-Unified toolkit for Cortellis Drug Discovery Intelligence and OFF-X:
-- **CI Web**: Build Excel-to-interactive CI dashboards with competition/opportunity scoring
-- **API Access**: Query targets/drugs via API for structured analysis
-- **Target-Drug Web**: Automate web exports across Cortellis categories
-- **OFF-X Web**: Export safety evidence and adverse events
+| Skill | Description |
+|-------|-------------|
+| [DESeq2 RNA-seq](skills/deseq2-rna/) | Interactive bulk RNA-seq differential expression analysis with multi-factor designs, GSEA pathway enrichment, and interactive visualizations |
+| [AnnData-Seurat Conversion](skills/anndata-seurat-conversion/) | Bidirectional h5ad/RDS conversion preserving expression data, metadata, reductions, and layers |
+| [Omicsoft DEG Analysis](skills/omicsoft-deg-analysis/) | Query pre-computed differential expression from Omicsoft h5ad files or TileDB-SOMA on S3 |
 
-### 5. **DESeq2 RNA-seq Analysis** (`skills/deseq2-rna/`)
-Interactive bulk RNA-seq differential expression analysis using DESeq2:
-- Raw count data processing with sample metadata
-- Multi-factor design formula support with collinearity testing
-- Pathway enrichment (GSEA with MSigDB, g:Profiler ORA)
-- Volcano plots, PCA, and comprehensive visualizations
-- Interactive HTML plots with hover tooltips
+### Pathway & Network Analysis
 
-### 6. **Protein Interaction Query** (`skills/interactdb-query/`)
-Query protein-protein interaction databases (STRING, IntAct, BioGRID):
-- Single-gene neighbor analysis
-- Multi-gene shortest path finding
-- Comprehensive filtering with entity and edge annotations
-- Network visualization preparation
+| Skill | Description |
+|-------|-------------|
+| [Pathway Database Query](skills/pathwaydb-query/) | Query KEGG, Reactome, MSigDB for gene-pathway associations; build Jaccard similarity networks; pathway module clustering (127 modules, 26,881 pathways) |
+| [Protein Interaction Query](skills/interactdb-query/) | Query STRING, IntAct, BioGRID for PPI neighbors and multi-gene shortest paths |
+| [KG Association](skills/kg-association/) | Multi-method biomedical entity association analysis using BioBridge, ULTRA/UltraQuery, and PrimeKG |
 
-### 7. **KG Association** (`skills/kg-association/`)
-Analyze biomedical entity associations using multiple knowledge graph methods:
-- **BioBridge**: Neural KG link prediction with mean embeddings for combos
-- **ULTRA/UltraQuery**: Foundation model predictions with intersection queries
-- **PrimeKG**: Shortest path analysis using graph traversal
-- Structured markdown reports with biological interpretations
-- Cross-method comparison and confidence assessment
+### Gene Expression & Databases
 
-### 8. **Omicsoft DEG Analysis** (`skills/omicsoft-deg-analysis/`)
-Analyze pre-computed differential gene expression statistics:
-- Query bulk DEG data from h5ad files
-- Filter by disease, study, or custom criteria
-- Signature-based expression pattern analysis
-- GSEA enrichment with leading edge annotation
+| Skill | Description |
+|-------|-------------|
+| [ARCHS4](skills/archs4/) | Gene expression atlas for 72+ human/mouse tissues with correlation, differential expression, and tissue-specific analysis |
+| [NCBI Paper Query](skills/ncbi-paper-query/) | PubMed literature search with omics accession extraction (GEO, SRA, ArrayExpress) and impact factor filtering |
 
-### 9. **Pathway Database Query** (`skills/pathwaydb-query/`)
-Query pathway databases (KEGG, Reactome, MSigDB):
-- Find gene-associated pathways and terms
-- Multi-gene comparative analysis with UpSet plots
-- Pathway similarity network construction using Jaccard indices
-- Gene-specific subnetwork extraction with centrality analysis
+### Genetics & Proteomics
 
-### 10. **Pseudobulk DEG with Speckle** (`skills/pseudobulkdge-speckle/`)
-Single-cell RNA-seq pseudobulk differential expression analysis:
-- Cell type-specific DEG analysis using scran/edgeR
-- Pathway enrichment with fgsea (Reactome, MSigDB)
-- Differential cell composition using speckle
-- Support for custom gene signatures
-- Interactive volcano plots with hover tooltips
+| Skill | Description |
+|-------|-------------|
+| [Genetics GSP](skills/genetics-gsp/) | Aggregated human genetics data from GSP: GWAS, Mendelian genetics (OMIM), gene burden for target safety and disease associations |
+| [Genetics UKB-PPP](skills/genetics-ukbppp/) | UKB-PPP plasma proteomics disease associations with logistic regression, ARD, and CoxPH models |
+
+### Drug Discovery & Target Assessment
+
+| Skill | Description |
+|-------|-------------|
+| [Cortellis](skills/cortellis/) | Cortellis Drug Discovery Intelligence + OFF-X: CI dashboards, API queries, web export automation |
+| [DrugBank](skills/drugbank/) | Query DrugBank for drug-target interactions, indications, pharmacology, and adverse effects |
+| [GOSTAR](skills/gostar/) | Query GOSTAR medicinal chemistry database for SAR data, bioassay/bioactivity, and pharmacological data |
+| [DrugnomeAI](skills/drugnomeai/) | Gene druggability predictions using PU learning with consensus tiers, composite scores, and modality prediction |
+| [Target Prioritization Report](skills/target-prioritization-report/) | Traceable target-prioritization pipelines with interactive HTML reports and configurable scoring |
+| [AgenticBoost Prompt](skills/agenticboost-prompt/) | Generate target evaluation documents from template, auto-populating Cortellis, pathway, and PPI data |
+
+### Structure Prediction
+
+| Skill | Description |
+|-------|-------------|
+| [Boltz](skills/boltz/) | Biomolecular structure prediction using Boltz 2.2.1: proteins, complexes, protein-ligand, protein-DNA/RNA systems |
 
 ## MCP Servers
 

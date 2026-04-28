@@ -187,11 +187,11 @@ Execute `scripts/deseq2_analysis.R` with parameters via command-line or JSON con
 ### Step 10: Generate Biological Interpretations
 
 ---
-#### **⚠️ ULTRATHINK REQUIRED ⚠️**
+#### **⚠️ CODEX_XHIGH REQUIRED ⚠️**
 
-**This step REQUIRES extended thinking (ultrathink) for deep biological analysis.**
+**This step REQUIRES extended thinking (codex xhigh) for deep biological analysis.**
 
-Claude MUST use extended thinking to provide expert-level interpretations.
+Codex MUST use extended thinking to provide expert-level interpretations.
 ---
 
 #### Claude's Role: Professional Biologist
@@ -216,17 +216,17 @@ While Claude has broad biological expertise, interpretations MUST be focused on:
 
 ---
 
-#### **🔬 ULTRATHINK: Deep Biological Analysis Protocol**
+#### **🔬 CODEX_XHIGH: Deep Biological Analysis Protocol**
 
-**Before writing ANY interpretation, Claude MUST:**
+**Before writing ANY interpretation, Codex MUST:**
 
-1. **ULTRATHINK - Context Identification Phase:**
+1. **CODEX_XHIGH - Context Identification Phase:**
    - Identify the target/pathway being studied from file names, comparison names, and top genes
    - Determine the disease/indication context from metadata and experimental design
    - Recognize the cell type/model system and its relevance
    - Understand what biological question each comparison addresses
 
-2. **ULTRATHINK - Extended Analysis Phase:**
+2. **CODEX_XHIGH - Extended Analysis Phase:**
    - Deeply analyze the DEG patterns, pathway enrichments, and top genes
    - Consider multiple biological mechanisms that could explain the observations
    - Cross-reference with known biology of the SPECIFIC target/pathway under study
@@ -258,22 +258,22 @@ While Claude has broad biological expertise, interpretations MUST be focused on:
    - `deg/{prefix}_ora_all.txt` - Combined ORA results (g:Profiler + MSigDB + Custom) with `source` column
    - `figures/*.png` - Volcano plots, PCA, GSEA/ORA dotplots by source (view for visual patterns)
 
-**2. For each comparison, generate ULTRATHINK interpretations:**
+**2. For each comparison, generate CODEX_XHIGH interpretations:**
 
-   **🧬 ULTRATHINK Required for Each Section:**
+   **🧬 CODEX_XHIGH Required for Each Section:**
 
    - **Biological Context**: What biological question does this comparison address?
    - **DEG Pattern Analysis**:
      - What does the up/down gene ratio suggest about cellular state?
      - Are there signs of activation, suppression, stress, or differentiation?
-   - **Top Upregulated Genes** (with ULTRATHINK):
+   - **Top Upregulated Genes** (with CODEX_XHIGH):
      - Research each gene's function using WebFetch if needed
      - Explain biological roles and relevance to the experimental context
      - Identify gene families or functional clusters
-   - **Top Downregulated Genes** (with ULTRATHINK):
+   - **Top Downregulated Genes** (with CODEX_XHIGH):
      - Same deep analysis as upregulated genes
      - Consider what suppression of these pathways means
-   - **Pathway Enrichment Insights** (with ULTRATHINK):
+   - **Pathway Enrichment Insights** (with CODEX_XHIGH):
      - Explain biological significance of each enriched pathway
      - Connect pathways to the experimental treatment/condition
      - Identify pathway crosstalk and regulatory relationships
@@ -281,9 +281,9 @@ While Claude has broad biological expertise, interpretations MUST be focused on:
      - Synthesize all findings into a coherent biological narrative
      - Propose molecular mechanisms explaining the observations
 
-**3. For the Discussion section, generate ULTRATHINK analysis:**
+**3. For the Discussion section, generate CODEX_XHIGH analysis:**
 
-   **🔬 ULTRATHINK Required for Discussion:**
+   **🔬 CODEX_XHIGH Required for Discussion:**
 
    - **Summary of Major Findings**:
      - Rank comparisons by biological significance
@@ -307,7 +307,7 @@ While Claude has broad biological expertise, interpretations MUST be focused on:
 
 **4. Update the draft report:**
    - Replace all `<!-- CLAUDE_INTERPRETATION_START -->` placeholders
-   - Ensure ULTRATHINK depth is evident in all interpretations
+   - Ensure CODEX_XHIGH depth is evident in all interpretations
    - Save as `{prefix}_Analysis_Report.md`
 
 ---
@@ -323,7 +323,7 @@ Before finalizing, verify each interpretation includes:
 
 ---
 
-**Output:** Final report with comprehensive ULTRATHINK biological interpretations at:
+**Output:** Final report with comprehensive CODEX_XHIGH biological interpretations at:
 `{output_dir}/{prefix}_Analysis_Report.md`
 
 ## Script Usage
@@ -506,200 +506,97 @@ Rscript RNAseq_reproducible.R
 
 ---
 
-## Standalone Visualization Functions
+## Standalone Visualization Functions (Ad-Hoc)
 
-The skill includes 4 standalone plotting functions for ad-hoc visualization of RNA-seq results. These are **not** part of the main DESeq2 workflow - they can be invoked separately when users request specific visualizations.
-
-### When to Use
-
-Use these functions when users request:
-- Heatmaps comparing signatures across conditions
-- Gene expression visualizations for specific gene sets
-- GSVA/ssGSEA score comparisons with statistical testing
-- Custom visualizations of DEG or enrichment results
+Four standalone plotting functions for ad-hoc visualization of RNA-seq results. **Not part of main pipeline** - invoked separately when users request specific visualizations.
 
 ### Available Functions
 
-| Function | Purpose | Primary Inputs |
-|----------|---------|----------------|
-| `plot_signature_heatmap()` | NES heatmap (signatures × comparisons) | GSEA results file OR rerun GSEA |
-| `plot_deg_heatmap()` | log2FC heatmap (genes × comparisons) | DEG summary stats file |
-| `plot_expression_heatmap()` | Z-scored expression (genes × samples) | Expression matrix, metadata |
-| `plot_gsva_boxplot()` | GSVA scores by treatment group | GSVA matrix, metadata OR rerun GSVA |
+| Function | Purpose |
+|----------|---------|
+| `plot_signature_heatmap()` | NES heatmap (signatures × comparisons) |
+| `plot_deg_heatmap()` | log2FC heatmap (genes × comparisons) |
+| `plot_expression_heatmap()` | Z-scored expression (genes × samples) |
+| `plot_gsva_boxplot()` | GSVA scores by treatment group |
+| `run_gsva_limma_de()` | GSVA + limma DE analysis (signatures × comparisons) |
 
-### Rerun GSEA/GSVA Option
-
-Both `plot_signature_heatmap()` and `plot_gsva_boxplot()` support rerunning GSEA/GSVA analysis instead of using pre-computed results. This is useful when:
-- You want to analyze new custom gene sets not in the original analysis
-- You want to recalculate scores with different parameters
-- You're working with data from a different source
-
-**IMPORTANT:** GSEA pipeline saves ALL results (including non-significant) to output files. Dotplots filter for significance internally.
-
-### Script Location
-
-```
-scripts/plotting_functions.R
-```
-
-### Usage
-
-Source the functions and call with user-specified parameters:
+### Quick Usage
 
 ```r
-# Load functions
 source("scripts/plotting_functions.R")
 
-# Example: Signature NES heatmap
+# NES heatmap
 plot_signature_heatmap(
   gsea_data = "deg/RNAseq_gsea_all.txt",
-  signatures = c("sig1", "sig2", "sig3"),
-  output_file = "figures/custom/signature_heatmap.png",
+  signatures = c("sig1", "sig2"),
   source_filter = "CUSTOM"
 )
-```
 
-### Required Inputs (User-Specified)
-
-For each function, Claude should collect from user:
-
-**plot_signature_heatmap:**
-- **Use existing data OR rerun analysis** (ask first!)
-  - If existing: GSEA results file path
-  - If rerun: DEG summary stats file path + gene_sets (named list)
-- Signature names to include
-- Source filter (CUSTOM, GO:BP, H, C2, etc.)
-- Output path
-
-**New parameters for rerun_gsea:**
-```r
-plot_signature_heatmap(
-  gsea_data = NULL,           # NULL when rerunning
-  rerun_gsea = TRUE,          # Enable rerun mode
-  deg_data = "path/to/summstats.txt",  # DEG results
-  gene_sets = list(           # Named list of gene sets
-    sig1 = c("GENE1", "GENE2"),
-    sig2 = readLines("sig.txt")
-  ),
-  pval_cutoff = 1             # Include all results (default)
-)
-```
-
-**plot_deg_heatmap:**
-- DEG summary stats file path
-- Signature file(s) OR gene list
-- Output path
-
-**plot_expression_heatmap:**
-- Expression data (RDS or matrix file)
-- Metadata file
-- Signature file(s) OR gene list
-- Group column name
-- Sample ID column name
-- Output path
-
-**plot_gsva_boxplot:**
-- **Use existing data OR rerun analysis** (ask first!)
-  - If existing: GSVA data (RDS or matrix file)
-  - If rerun: Counts data file path + gene_sets (named list)
-- Metadata file
-- Signature names
-- Group column name
-- Statistical method (adaptive/kruskal/none)
-- Max pairs to display
-- Output path
-
-**New parameters for rerun_gsva:**
-```r
+# GSVA boxplot
 plot_gsva_boxplot(
-  gsva_data = NULL,           # NULL when rerunning
-  rerun_gsva = TRUE,          # Enable rerun mode
-  counts_data = "path/to/counts.rds",  # Expression/counts matrix
-  gene_sets = list(           # Named list of gene sets
-    sig1 = c("GENE1", "GENE2"),
-    sig2 = readLines("sig.txt")
-  ),
-  kcdf = "auto"               # Auto-detect: "Poisson" for integers, "Gaussian" for normalized
+  gsva_data = "RNAseq_analysis_data.rds",
+  metadata = "processed_metadata.txt",
+  signatures = c("sig1"),
+  group_col = "Treatment"
 )
 ```
 
-**kcdf auto-detection:** The function automatically detects whether input is integer counts (uses "Poisson") or normalized values (uses "Gaussian") based on whether all values equal their floor.
+### Output
 
-### AskUserQuestion Workflow for Rerun Options
+- PNG: `figures/expr_comp_heatmap_boxplot/`
+- Interactive HTML: `figures/interactive/expr_comp_heatmap_boxplot/`
+- Statistics TSV: `figures/expr_comp_heatmap_boxplot/*_pairwise_stats.tsv`
 
-When Claude is asked to generate GSVA boxplots or NES heatmaps, Claude MUST use `AskUserQuestion` tool:
+### Detailed Documentation
 
-**Question 1: Data Source**
+**For full parameters, rerun options, and workflows, load:**
+- `scripts/PLOTTING.md` - Complete module documentation (rerun GSEA/GSVA, AskUserQuestion workflows)
+- `references/plotting_guide.md` - Detailed parameter reference for all functions
+
+---
+
+## Multi-Dataset Comparison Module (Ad-Hoc)
+
+Independent module for comparing DESeq2 results with external datasets. **Detached from main pipeline** - invoked on-demand when users request cross-dataset comparisons.
+
+### When to Use
+
+- Cross-dataset comparison (e.g., "Compare results with published data")
+- Reversal pattern identification (genes UP by stimulation, DOWN by treatment)
+- Heatmaps comparing in-house vs external datasets
+- Biomarker tables with significance annotations
+
+### Analysis Modes
+
+| Mode | Description |
+|------|-------------|
+| **Discovery** | Find top N genes matching reversal criteria |
+| **Gene List** | Analyze specific genes across datasets |
+| **Pathway** | Compare pathway enrichments (GSEA) |
+
+### Quick Start
+
+```bash
+# Discovery mode
+python ~/.claude/skills/deseq2-rna/scripts/multidata/multidata_adapter.py \
+  --deseq2_output /path/to/output --mode discovery --top_n 50
+
+# Gene list mode
+python ~/.claude/skills/deseq2-rna/scripts/multidata/multidata_adapter.py \
+  --deseq2_output /path/to/output --mode gene_list --genes "GREM1,IL11,NOG"
+
+# With external datasets
+python ~/.claude/skills/deseq2-rna/scripts/multidata/multidata_adapter.py \
+  --deseq2_output /path/to/output --external_config sources.json
 ```
-header: "Data source"
-question: "Use existing pre-computed results or rerun analysis?"
-options:
-  - label: "Use existing results (Recommended)"
-    description: "Use pre-computed GSVA/GSEA scores from analysis RDS file"
-  - label: "Rerun analysis"
-    description: "Recompute GSVA/GSEA scores with new gene sets or matrix"
-```
 
-**If "Use existing results":**
-- Read gsva_scores/gsea results from the RDS/text file
-- No additional questions needed
+### Output
 
-**If "Rerun analysis" - Question 2 (GSVA only): Input Matrix**
-```
-header: "Input matrix"
-question: "Which counts/expression matrix file should be used for GSVA?"
-options: [list available .rds/.txt files in data directory]
-```
+Default: `deg_multi_comparison/` with TSV tables, heatmaps (PNG), and config.json.
 
-**Note:** For GSVA, kcdf is auto-detected - no manual question needed.
+### Detailed Documentation
 
-### Output Files
-
-All output files (static PNG, interactive HTML, and statistics TSV) are saved to subfolders under `figures/`:
-- **Static PNG**: `figures/expr_comp_heatmap_boxplot/`
-- **Interactive HTML**: `figures/interactive/expr_comp_heatmap_boxplot/`
-- **Statistics TSV**: `figures/expr_comp_heatmap_boxplot/` (same as PNG)
-
-| Function | PNG Output (in `expr_comp_heatmap_boxplot/`) | HTML Output (in `interactive/expr_comp_heatmap_boxplot/`) |
-|----------|----------------------------------------------|-----------------------------------------------------------|
-| plot_signature_heatmap | `*_NES_heatmap.png` | `*_NES_heatmap_interactive.html` |
-| plot_deg_heatmap | `*_[signature]_deg_heatmap.png` | `*_[signature]_deg_heatmap_interactive.html` |
-| plot_expression_heatmap | `*_[signature]_expression_heatmap.png` | `*_[signature]_expression_heatmap_interactive.html` |
-| plot_gsva_boxplot | `*_[signature]_boxplot.png` | `*_[signature]_boxplot_interactive.html` |
-
-**Additional Output for `plot_gsva_boxplot()`:**
-- Pairwise statistics TSV: `figures/expr_comp_heatmap_boxplot/*_pairwise_stats.tsv` (when `export_stats = TRUE`)
-
-### Interactive Plots
-
-All plotting functions generate interactive HTML versions by default (`interactive = TRUE`). Interactive plots include hover tooltips with comprehensive statistical information:
-
-| Function | Hover Information | Cell Annotation |
-|----------|-------------------|-----------------|
-| `plot_signature_heatmap()` | Signature name, Comparison, NES, p-value, FDR | `*` significance stars |
-| `plot_deg_heatmap()` | Gene symbol, Comparison, log2FC, p-value (if available), FDR | `*` significance stars |
-| `plot_expression_heatmap()` | Gene symbol, Sample, Treatment group, Z-score/expression value | None (colors show z-score) |
-| `plot_gsva_boxplot()` | Treatment group, GSVA score, individual data points | N/A (boxplot) |
-
-**Significance annotations (displayed in heatmap cells):**
-- `*` p < 0.05
-- `**` p < 0.01
-- `***` p < 0.001
-- `****` p < 0.0001
-
-To disable interactive output, set `interactive = FALSE` in the function call.
-
-**Note:** Interactive HTML plots require a web browser. They do NOT work in PDF, PowerPoint, or static documents.
-
-### Dependencies
-
-Additional R packages required:
-- ComplexHeatmap
-- ggsignif
-- rstatix
-- car
-- heatmaply (for interactive heatmaps)
-- plotly (for interactive plots)
-- htmlwidgets (for saving HTML output)
-
-See `references/plotting_guide.md` for detailed documentation.
+**For full workflow, configuration, and script details, load:**
+- `scripts/multidata/MULTIDATA.md` - Complete module documentation (7-step workflow, config format, heatmap options)
+- `references/multidata_integration.md` - Column mapping, score logic patterns
+- `references/multidata_parameter_guide.md` - Parameter reference for all scripts

@@ -4,12 +4,12 @@ DESeq2 RNA-seq Analysis Report Generator
 Generates comprehensive markdown report from DESeq2 analysis outputs
 Parameterized for use with any DESeq2 analysis
 
-ULTRATHINK PROTOCOL:
+CODEX_XHIGH PROTOCOL:
 This script generates draft reports with interpretation placeholders that include
-ULTRATHINK directives for Claude to provide deep biological analysis. Each placeholder
-requires Claude to:
+CODEX_XHIGH directives for Codex to provide deep biological analysis. Each placeholder
+requires Codex to:
 1. Assume the role of a professional biologist (molecular, disease, computational biology)
-2. Use extended thinking (ultrathink) for mechanistic insights
+2. Use extended thinking (codex xhigh) for mechanistic insights
 3. Integrate findings with established biological knowledge
 4. Use WebFetch for relevant data retrieval when needed
 5. Generate specific, testable hypotheses
@@ -199,21 +199,21 @@ def get_top_genes(data, comparison_name, direction='up', n_top=10):
 
 
 def generate_interpretation_placeholder(section_id, section_title, data_context):
-    """Generate placeholder section for Claude to fill in biological interpretation.
+    """Generate placeholder section for Codex to fill in biological interpretation.
 
-    Includes ULTRATHINK directive for deep biological analysis with context-specific focus.
+    Includes CODEX_XHIGH directive for deep biological analysis with context-specific focus.
     """
     return f"""
-<!-- CLAUDE_INTERPRETATION_START: {section_id} -->
+<!-- CODEX_INTERPRETATION_START: {section_id} -->
 
 #### {section_title}
 
 **[INTERPRETATION REQUIRED]**
 
 ---
-**⚠️ ULTRATHINK REQUIRED ⚠️**
+**⚠️ CODEX_XHIGH REQUIRED ⚠️**
 
-**Claude's Role:** Professional Biologist with Broad Expertise
+**Codex's Role:** Professional Biologist with Broad Expertise
 (Molecular Biology, Disease Biology across all therapeutic areas, Computational Biology)
 
 **CONTEXT-SPECIFIC FOCUS:** Interpret findings in the context of THIS study's:
@@ -222,7 +222,7 @@ def generate_interpretation_placeholder(section_id, section_title, data_context)
 - Cell type/model system used
 - Treatments and their mechanisms of action
 
-**ULTRATHINK Protocol:**
+**CODEX_XHIGH Protocol:**
 1. **Context Identification**: First identify the study-specific biological context
 2. **Extended Analysis**: Deeply analyze the data in that specific context
 3. **Mechanistic Insight**: Explain mechanisms SPECIFIC to this target/disease
@@ -233,11 +233,11 @@ def generate_interpretation_placeholder(section_id, section_title, data_context)
 
 ---
 
-*Claude should provide detailed biological interpretation based on the following data:*
+*Codex should provide detailed biological interpretation based on the following data:*
 
 {data_context}
 
-<!-- CLAUDE_INTERPRETATION_END: {section_id} -->
+<!-- CODEX_INTERPRETATION_END: {section_id} -->
 """
 
 
@@ -261,7 +261,7 @@ def format_pathway_table(data, comparison_name, direction='up', n_top=5):
 # ==============================================================================
 
 def generate_header(params):
-    """Generate report header with ULTRATHINK notice."""
+    """Generate report header with CODEX_XHIGH notice."""
     return f"""# {params['title']}
 
 **Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
@@ -270,24 +270,24 @@ def generate_header(params):
 
 ---
 
-<!-- ULTRATHINK_INSTRUCTIONS_START
+<!-- CODEX_XHIGH_INSTRUCTIONS_START
 ================================================================================
-⚠️ ULTRATHINK REQUIRED FOR BIOLOGICAL INTERPRETATIONS ⚠️
+⚠️ CODEX_XHIGH REQUIRED FOR BIOLOGICAL INTERPRETATIONS ⚠️
 
-Claude's Role: Professional Biologist with Broad Expertise
+Codex's Role: Professional Biologist with Broad Expertise
 - Molecular Biology: Gene regulation, signaling pathways, protein function
 - Disease Biology: Broad expertise across therapeutic areas (oncology, immunology,
   fibrosis, metabolic, neurological, cardiovascular, infectious disease, rare diseases)
 - Computational Biology: Transcriptomics, pathway analysis, systems biology
 
 CONTEXT-SPECIFIC FOCUS:
-While having broad expertise, Claude MUST focus interpretations on:
+While having broad expertise, Codex MUST focus interpretations on:
 - The SPECIFIC target/pathway being studied (infer from comparisons, top genes)
 - The SPECIFIC disease/indication context relevant to this experiment
 - The cell type/model system used and its biological relevance
 - The mechanism of action of treatments tested in this study
 
-ULTRATHINK Protocol for ALL interpretation sections:
+CODEX_XHIGH Protocol for ALL interpretation sections:
 1. First IDENTIFY the study context (target, disease, cell type, treatments)
 2. Use extended thinking to deeply analyze data in that specific context
 3. Provide MECHANISTIC explanations specific to this target/disease
@@ -302,7 +302,7 @@ Quality Standards:
 - Avoid generic interpretations - always tie back to study-specific biology
 - Integrate multiple data types (DEGs + pathways + known biology for THIS context)
 ================================================================================
-ULTRATHINK_INSTRUCTIONS_END -->
+CODEX_XHIGH_INSTRUCTIONS_END -->
 
 ---
 """
@@ -669,7 +669,7 @@ def generate_discussion(data, params):
 {generate_interpretation_placeholder(
     "discussion_treatment_effects",
     "Treatment Effects Analysis",
-    f'''**🔬 ULTRATHINK: Perform deep comparative analysis of treatment effects**
+    f'''**🔬 CODEX_XHIGH: Perform deep comparative analysis of treatment effects**
 
 Based on the DEG counts and pathway enrichments above, provide detailed MECHANISTIC analysis of:
 - Which treatments produced the strongest transcriptional response and WHY (molecular mechanism)
@@ -682,7 +682,7 @@ Based on the DEG counts and pathway enrichments above, provide detailed MECHANIS
 {generate_interpretation_placeholder(
     "discussion_pathway_convergence",
     "Pathway Convergence and Divergence",
-    f'''**🔬 ULTRATHINK: Analyze pathway patterns across all comparisons**
+    f'''**🔬 CODEX_XHIGH: Analyze pathway patterns across all comparisons**
 
 Perform deep analysis of which pathways are:
 - Shared across multiple treatments (what does convergent biology reveal about core mechanisms?)
@@ -695,7 +695,7 @@ Perform deep analysis of which pathways are:
 {generate_interpretation_placeholder(
     "discussion_biological_implications",
     "Biological Implications",
-    f'''**🔬 ULTRATHINK: Synthesize findings into biological and clinical insights**
+    f'''**🔬 CODEX_XHIGH: Synthesize findings into biological and clinical insights**
 
 Provide expert-level synthesis answering:
 - What do these results tell us about the target/pathway function in this cell system
@@ -708,7 +708,7 @@ Provide expert-level synthesis answering:
 {generate_interpretation_placeholder(
     "discussion_hypotheses",
     "Hypotheses for Future Investigation",
-    f'''**🔬 ULTRATHINK: Generate specific, testable hypotheses**
+    f'''**🔬 CODEX_XHIGH: Generate specific, testable hypotheses**
 
 Based on deep analysis of all findings, generate:
 - Specific genes or pathways to validate experimentally (prioritized by evidence strength)

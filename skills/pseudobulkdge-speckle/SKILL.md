@@ -18,32 +18,36 @@ This skill performs comprehensive single-cell RNA-seq pseudobulk differential ex
 
 Runtime scales with number of cells, cell types, and comparisons. Based on benchmark with **172K cells, 49 cell types, 1 comparison**:
 
-| Step | Description | Time | Output Size |
-|------|-------------|------|-------------|
-| 1-2 | Load + Aggregate | ~2 min | 1-2KB QC |
-| 3 | DEG Analysis | ~1 min | 80-200MB |
-| 4a | Reactome fgsea (groups) | ~15 min | 10-15MB |
-| 4b | MSigDB (C8+C2+H) groups | ~20 min | 40-50MB |
-| 4c | Custom signatures (groups) | ~1 min | <1MB |
-| 5a | Cluster-level Reactome | ~15-80 min* | 20-30MB |
-| 5b | Cluster-level MSigDB C8 | ~20 min | 15-20MB |
-| 5c | Cluster-level Custom | ~3 min | <1MB |
-| 6 | Cluster markers | ~4 min | 150-200MB |
-| 7 | Speckle | ~1 min | <1MB |
-| **Total** | **Full pipeline** | **~80-150 min** | |
+| Module | Description | Time Estimate | Output |
+|--------|-------------|---------------|--------|
+| **deg** | DEG Analysis | ~3 min | pseudobulk_*_DE.tsv, volcano plots, DEG reports |
+| **fgsea_groups** | Pathway Enrichment (comparison-level) | ~35 min | fgsea_groups_clusters/*.tsv |
+| **fgsea_clusters** | Pathway Enrichment (cluster-level) | ~30-80 min* | fgsea_clusters/*.tsv |
+| **speckle** | Cell Composition | ~1 min | speckle_diffprop/*.tsv |
+| **markers** | Cluster Markers | ~4 min | combined_markers_clusters.tsv |
 
-*Step 5 timing varies significantly:
-- With presto::wilcoxauc (fast): ~15 min
+*Cluster-level fgsea timing varies significantly:
+- With presto::wilcoxauc (fast): ~30 min
 - With Seurat::FindAllMarkers fallback: ~80 min (used when presto fails on Seurat 5.0+)
 
+**Recommended module combinations:**
+
+| Use Case | Modules | Est. Time |
+|----------|---------|-----------|
+| Quick DEG scan | deg | ~3 min |
+| Standard analysis | deg, fgsea_groups, speckle | ~40 min |
+| Full analysis (no cluster fgsea) | deg, fgsea_groups, speckle, markers | ~45 min |
+| Complete analysis | all | ~80-150 min |
+| Rerun fgsea on existing DEG | fgsea_groups (with --deg_input) | ~35 min |
+
 **Scaling factors:**
-- Each additional comparison: +35 min for Steps 3-4
+- Each additional comparison: +35 min for DEG + fgsea_groups
 - More cell types: linear increase in fgsea time
-- More cells: moderate increase in DEG time, significant increase in Step 5
+- More cells: moderate increase in DEG time, significant increase in fgsea_clusters
 
 **Important:** Do NOT interrupt the pipeline during fgsea steps. Progress is logged but outputs are written at the end of each step.
 
-## Workflow (9 Steps)
+## Workflow (10 Steps)
 
 ### Step 1: Input Handling
 
@@ -127,7 +131,35 @@ Do you want to include additional covariates?
 Options: [No covariates, <potential covariate columns>]
 ```
 
-### Step 4: Comparison Design
+### Step 4: Module Selection
+
+Use AskUserQuestion to determine which analysis modules to run:
+
+**Question: Analysis Modules**
+```
+Which analysis modules do you want to run?
+
+Options (select all that apply):
+- DEG Analysis (pseudobulk differential expression) [Recommended]
+- fgsea Pathway Enrichment - Comparison Level (Reactome, MSigDB, custom) [Recommended]
+- fgsea Pathway Enrichment - Cluster Level (cell type-specific pathways) [Time-intensive]
+- Speckle Cell Composition (differential proportions) [Recommended]
+- Cluster Markers (findMarkers for cell type characterization)
+```
+
+**Module Dependencies:**
+
+| Module | Depends On | Can Run Standalone |
+|--------|------------|-------------------|
+| deg | (none) | Yes |
+| fgsea_groups | DEG results | Yes (can rerun on existing DEG files) |
+| fgsea_clusters | Seurat object | Yes |
+| speckle | (none) | Yes |
+| markers | Seurat object | Yes |
+
+**Note:** Cluster-level fgsea is time-intensive (~30-80 min). Recommend skipping unless specifically needed for cell type characterization.
+
+### Step 5: Comparison Design
 
 Use AskUserQuestion for comparison pairs:
 
@@ -152,7 +184,7 @@ Options:
 
 If custom signatures selected, ask for file path or gene list.
 
-### Step 5: Interview & Confirmation
+### Step 6: Interview & Confirmation
 
 Summarize all parameters and confirm:
 
@@ -174,6 +206,15 @@ Comparisons:
   2. Healthy vs PSS
   3. IPF vs PSS
 
+Selected Modules: (based on user selection in Step 4)
+  ✓ DEG Analysis
+  ✓ fgsea Pathway Enrichment (comparison-level)
+  ✓ fgsea Pathway Enrichment (cluster-level)
+  ✓ Speckle Cell Composition
+  ✓ Cluster Markers
+
+Estimated runtime: ~80-150 min (varies by modules selected)
+
 Custom signatures: None
 
 filterByExpr parameters:
@@ -184,7 +225,7 @@ filterByExpr parameters:
 Proceed with analysis? [Yes/No]
 ```
 
-### Step 6: Execution (Long-running)
+### Step 7: Execution (Long-running)
 
 **CRITICAL: Do NOT interrupt the pipeline unless there is an error or user explicitly requests.**
 
@@ -200,9 +241,37 @@ conda activate r_env && Rscript ${SKILL_DIR}/scripts/run_pseudobulk_pipeline.R \
   --batch <batch_col> \
   --covariate <covariate_col> \
   --comparisons "<group1>,<group2>;<group1>,<group2>" \
+  --modules <module_list> \
   --custom_signatures <path_to_signatures> \
   --volcano_fdr <fdr_cutoff> \
   --volcano_log2fc <log2fc_cutoff>
+```
+
+**Module Selection CLI Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--modules` | Comma-separated list: `deg,fgsea_groups,fgsea_clusters,speckle,markers` or `all` |
+| `--skip_fgsea_clusters` | Skip cluster-level fgsea (convenience flag) |
+| `--deg_only` | Run only DEG analysis |
+| `--fgsea_only` | Run only fgsea on existing DEG results (requires --deg_input) |
+| `--speckle_only` | Run only speckle cell composition analysis |
+| `--deg_input` | Path to directory with existing DEG results (for --fgsea_only mode) |
+
+**Example module combinations:**
+
+```bash
+# Standard analysis (recommended)
+--modules deg,fgsea_groups,speckle
+
+# Quick DEG scan only
+--modules deg
+
+# Full analysis without cluster-level fgsea
+--modules deg,fgsea_groups,speckle,markers
+
+# Rerun fgsea on existing DEG results
+--fgsea_only --deg_input /path/to/existing/results/ --output /path/to/new/fgsea/
 ```
 
 **Volcano Plot Cutoffs (ask user before running):**
@@ -252,21 +321,42 @@ write.table(custom.fgsea,
   sep = "\t", quote = FALSE, row.names = FALSE)
 ```
 
-### Step 7: Sanity Check
+### Step 8: Sanity Check
 
-Verify all outputs generated:
+Verify outputs generated based on selected modules:
 
 ```
-Expected outputs:
-- [ ] pseudobulk_*_DE.tsv
+Expected outputs (by module):
+
+DEG module:
+- [ ] pseudobulk_*_DE.tsv (differential expression results)
+- [ ] deg_completion_report.tsv (per-cluster DEG status)
+- [ ] deg_filtering_stats.tsv (filterByExpr breakdown)
+- [ ] deg_summary.txt (human-readable summary)
 - [ ] volcano_plots/*.png (static volcano plots)
 - [ ] volcano_plots/*.html (interactive volcano plots with hover)
+
+fgsea_groups module:
 - [ ] fgsea_groups_clusters/*.tsv (pathway enrichment per comparison)
-- [ ] fgsea_clusters/*.tsv + *.pdf (cluster-level enrichment)
-- [ ] combined_markers_clusters.tsv
-- [ ] speckle_diffprop/*.tsv (cell composition results)
 - [ ] fgsea_custom_signatures.tsv (if custom signatures provided)
+
+fgsea_clusters module:
+- [ ] fgsea_clusters/*.tsv + *.pdf (cluster-level enrichment)
+- [ ] fgsea_clusters/clusters_custom_clusters.tsv (if custom signatures)
+
+markers module:
+- [ ] combined_markers_clusters.tsv
+
+speckle module:
+- [ ] speckle_diffprop/*.tsv (cell composition results)
 ```
+
+**DEG Completion Report (`deg_completion_report.tsv`):**
+Shows per-cluster success/failure status with:
+- Sample counts per group
+- Genes tested vs filtered
+- Number of DEGs (up/down)
+- Failure reasons if excluded
 
 **Interactive Volcano Plots (HTML):**
 Self-contained HTML files with interactive hover. Hover shows:
@@ -283,7 +373,7 @@ Color coding based on user-defined cutoffs:
 
 If any outputs are missing, report the issue and suggest troubleshooting steps.
 
-### Step 8: Report Generation
+### Step 9: Report Generation
 
 **8a. Align with user on filter cutoffs:**
 
@@ -316,9 +406,9 @@ This generates filtered result files for each comparison:
 - `{comparison}_top_pathways.tsv`
 - `{comparison}_speckle.tsv`
 
-**8c. Claude Code Ultrathink Interpretation (REQUIRED):**
+**8c. Codex XHIGH Interpretation (REQUIRED):**
 
-For EACH comparison, Claude Code MUST:
+For EACH comparison, Codex MUST:
 
 1. **Read the filtered results files:**
    ```
@@ -327,18 +417,18 @@ For EACH comparison, Claude Code MUST:
    {comparison}_speckle.tsv
    ```
 
-2. **Use ultrathink to generate interpretation:**
+2. **Use codex xhigh to generate interpretation:**
    - Analyze top upregulated genes: function, known disease associations
    - Analyze top downregulated genes: biological significance
    - Interpret pathway enrichment: mechanistic insights
    - Interpret cell composition changes: cellular basis of disease
    - Cross-reference with literature using WebFetch when needed
 
-3. **Append the ultrathink interpretation to the report markdown**
+3. **Append the codex xhigh interpretation to the report markdown**
 
-4. **NEVER skip ultrathink interpretation - it is REQUIRED for each comparison**
+4. **NEVER skip codex xhigh interpretation - it is REQUIRED for each comparison**
 
-### Step 9: Report Structure
+### Step 10: Report Structure
 
 The final report follows this structure:
 
@@ -391,7 +481,7 @@ The final report follows this structure:
 (Significant only, FDR < 0.05)
 
 #### Biological Interpretation
-[ULTRATHINK SECTION - Deep analysis of:]
+[CODEX_XHIGH SECTION - Deep analysis of:]
 - Gene function and pathway connections
 - Disease/condition relevance
 - Therapeutic implications
@@ -412,7 +502,7 @@ The final report follows this structure:
 - Consistent vs unique findings
 
 ### Biological Significance
-[ULTRATHINK - Professional biologist interpretation]
+[CODEX_XHIGH - Professional biologist interpretation]
 
 ### Clinical/Translational Relevance
 - Biomarker potential

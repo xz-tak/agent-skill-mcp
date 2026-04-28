@@ -1,0 +1,20 @@
+[workspace]
+name = "database-gostar"
+version = "0.1.0"
+description = "GOSTAR database connection and query tools"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
+
+[dependencies]
+python = ">=3.10"
+psycopg2 = "*"
+pandas = ">=3.0.0,<4"
+polars = ">=1.38.1,<2"
+connectorx = ">=0.4.3,<0.5"
+sqlalchemy = ">=2.0.46,<3"
+psycopg2-binary = ">=2.9,<3"
+pyarrow = ">=23.0.0,<24"
+boto3 = ">=1.42.45,<2"
+
+[tasks]
+test-connection = "python test_connection.py"

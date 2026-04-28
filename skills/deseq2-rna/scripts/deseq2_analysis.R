@@ -872,7 +872,7 @@ plot_volcano <- function(res, padj_thresh, lfc_thresh, output_path) {
     theme_bw() +
     theme(legend.position = "bottom")
 
-  ggsave(output_path, p, width = 10, height = 8, dpi = 150)
+  ggsave(output_path, p, width = 10, height = 8, dpi = 720)
 }
 
 plot_gsea_dotplot <- function(gsea_res, output_path, n_show = 10) {
@@ -885,7 +885,7 @@ plot_gsea_dotplot <- function(gsea_res, output_path, n_show = 10) {
       facet_grid(~.sign) +
       theme_bw()
 
-    ggsave(output_path, p, width = 12, height = 8, dpi = 150)
+    ggsave(output_path, p, width = 12, height = 8, dpi = 720)
   }, error = function(e) {
     warning(glue("Failed to create GSEA dotplot: {e$message}"))
   })
@@ -906,7 +906,7 @@ plot_pca <- function(vsd, coldata, color_by, output_path) {
     theme_bw() +
     theme(legend.position = "right")
 
-  ggsave(output_path, p, width = 10, height = 8, dpi = 150)
+  ggsave(output_path, p, width = 10, height = 8, dpi = 720)
 }
 
 plot_pca_advanced <- function(vsd, coldata, custom_gsva_scores, figures_dir, prefix) {
@@ -921,7 +921,7 @@ plot_pca_advanced <- function(vsd, coldata, custom_gsva_scores, figures_dir, pre
 
   # Scree plot
   png(file.path(figures_dir, paste0(prefix, "_PCA_screeplot.png")),
-      width = 800, height = 600)
+      width = 10, height = 8, units = "in", res = 720)
   print(screeplot(pca_obj, components = 1:10))
   dev.off()
 
@@ -964,7 +964,7 @@ plot_pca_advanced <- function(vsd, coldata, custom_gsva_scores, figures_dir, pre
   tryCatch({
     if (ncol(meta_filtered) > 0) {
       png(file.path(figures_dir, paste0(prefix, "_PCA_eigencorplot.png")),
-          width = 1200, height = 1000, res = 120)
+          width = 12, height = 10, units = "in", res = 720)
       print(eigencorplot(
         pca_obj_eigen,
         metavars = colnames(meta_filtered),
@@ -1019,7 +1019,7 @@ plot_pca_biplots <- function(pca_obj, coldata, figures_dir, prefix) {
                   title = glue("{prefix} - PCA biplot colored by {col}"))
 
       output_path <- file.path(figures_dir, paste0(prefix, "_PCA_biplot_", col, ".png"))
-      ggsave(output_path, p, width = 12, height = 10, dpi = 150)
+      ggsave(output_path, p, width = 12, height = 10, dpi = 720)
       cat(glue("    Saved: {col}\n"))
     }, error = function(e) {
       warning(glue("Biplot for {col} failed: {e$message}"))
@@ -1078,7 +1078,7 @@ run_pc_gsea <- function(pca_obj, species_config, figures_dir, prefix, pcs = c("P
             facet_grid(. ~ .sign)
 
           ggsave(file.path(figures_dir, paste0("GSEA_", prefix, "_", pc, "_loadings.png")),
-                 p, width = 14, height = 10, dpi = 150)
+                 p, width = 14, height = 10, dpi = 720)
 
           cat(glue("    {pc}: {nrow(gse@result)} enriched pathways\n"))
         } else {
@@ -1113,9 +1113,9 @@ plot_de_summary <- function(de_counts, output_path) {
       fill = "Direction"
     ) +
     theme_bw() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
 
-  ggsave(output_path, p, width = 14, height = 8, dpi = 150)
+  ggsave(output_path, p, width = 14, height = 8, dpi = 720)
 }
 
 # ==============================================================================
@@ -1160,7 +1160,7 @@ plot_gsea_by_source <- function(gsea_df, figures_dir, comp_name, n_show = 15) {
     output_path <- file.path(figures_dir, paste0("GSEA_", comp_name, "_", src_clean, ".png"))
 
     tryCatch({
-      ggsave(output_path, p, width = 12, height = 8, dpi = 150)
+      ggsave(output_path, p, width = 12, height = 8, dpi = 720)
     }, error = function(e) {
       warning(glue("Failed to create GSEA plot for {src}: {e$message}"))
     })
@@ -1213,7 +1213,7 @@ plot_ora_by_source <- function(ora_df, figures_dir, comp_name, n_show = 15) {
     output_path <- file.path(figures_dir, paste0("ORA_", comp_name, "_", src_clean, ".png"))
 
     tryCatch({
-      ggsave(output_path, p, width = 14, height = 8, dpi = 150)
+      ggsave(output_path, p, width = 14, height = 8, dpi = 720)
     }, error = function(e) {
       warning(glue("Failed to create ORA plot for {src}: {e$message}"))
     })

@@ -43,14 +43,36 @@ MCP tools write outputs to their internal directories. These files MUST be moved
 - For result reproducibility and archiving
 - For downstream analysis by users
 
-#### IMPORTANT: Move-Then-Process Workflow
+#### Direct Output with output_dir Parameter (Recommended)
 
-**For EACH MCP query that produces output files, follow this exact sequence:**
+**ULTRA MCP tools now support `output_dir` parameter for direct file output:**
 
-1. **Run MCP query** → Get result with output_file path
-2. **MOVE output file to working directory** → Do this IMMEDIATELY
-3. **Read and process the moved file** → Extract scores
-4. **Proceed to next query** → Repeat steps 1-3
+1. **Run MCP query with output_dir** → Files saved directly to your working directory
+2. **Read and process the file** → Extract scores (no move needed!)
+3. **Proceed to next query**
+
+```python
+from pathlib import Path
+
+# Define destination in working directory
+working_dir = Path("./kgpred_<context>_<date>")
+data_dir = working_dir / "data" / "ultra"
+data_dir.mkdir(parents=True, exist_ok=True)
+
+# MCP writes directly to your output_dir - no move needed!
+result = mcp__ultra-inference__predict_tail_entities(
+    head_entity="TYK2",
+    relation="associated with",
+    output_dir=str(data_dir)  # Files saved directly here
+)
+
+# Read directly from the output path
+df = pd.read_parquet(result['output_file'])
+```
+
+#### Legacy: Move-Then-Process Workflow (Backward Compatible)
+
+If `output_dir` is not specified, files are saved to MCP default directory and must be moved:
 
 ```python
 import shutil
@@ -343,16 +365,15 @@ for entity2 in entity2_individuals:
     result = mcp__ultra-inference__predict_tail_entities(
         head_entity=entity2,
         relation="associated with",
-        top_k=None  # Get all predictions for proper pct_rank calculation
+        top_k=None,  # Get all predictions for proper pct_rank calculation
+        output_dir=str(data_dir)  # NEW: Direct output to working directory
     )
 
-    # MOVE parquet to working directory
-    src_file = result['output_file']
-    dest_file = data_dir / f"{entity2}_predictions.parquet"
-    shutil.move(src_file, dest_file)
+    # File is now saved directly to working directory - no move needed!
+    output_file = result['output_file']
 
     # Read output parquet and filter to entity1_type ONLY (e.g., disease only)
-    df = pd.read_parquet(dest_file)
+    df = pd.read_parquet(output_file)
     df_filtered = df[df['t_pred_type'] == entity1_type].copy()  # e.g., 'disease'
 
     # CRITICAL: Recalculate rank and pct_rank within entity1_type only
@@ -447,25 +468,17 @@ for combo in entity2_combos:
 
     result = mcp__ultraquery-inference__answer_complex_query(
         query_structure=query,
-        top_k=5  # Only affects API response; parquet files always contain ALL predictions
+        top_k=5,  # Only affects API response; parquet files always contain ALL predictions
+        output_dir=str(data_dir)  # NEW: Direct output to working directory
     )
 
-    # MOVE parquet files to working directory
-    combo_name = "_".join(combo)
-
-    # Move filtered predictions (contains ALL filtered predictions, not limited by top_k)
-    src_filtered = result['output_file_filtered']
-    dest_filtered = data_dir / f"{combo_name}_predictions_filtered.parquet"
-    shutil.move(src_filtered, dest_filtered)
-
-    # Move all predictions (optional, for reference)
-    src_all = result['output_file_all']
-    dest_all = data_dir / f"{combo_name}_predictions_all.parquet"
-    shutil.move(src_all, dest_all)
+    # Files are now saved directly to working directory - no move needed!
+    output_file_filtered = result['output_file_filtered']
+    output_file_all = result['output_file_all']
 
     # Read output parquet and filter to entity1_type ONLY (e.g., disease only)
     # CRITICAL: filtered_percentile_rank combines ALL schema-matched types - DO NOT USE directly
-    df = pd.read_parquet(dest_filtered)
+    df = pd.read_parquet(output_file_filtered)
     df_filtered = df[df['entity_type'] == entity1_type].copy()  # e.g., 'disease'
 
     # CRITICAL: Recalculate rank and pct_rank within entity1_type only
@@ -921,40 +934,36 @@ Note: PrimeKG combos use averaging, so delta = 0 by definition (always NEAR-ADDI
 
 ---
 
-## Strict Workflow: Move-Then-Process Pattern
+## Recommended Workflow: Direct Output with output_dir
 
-**CRITICAL: Follow this exact pattern for every MCP query that produces output files.**
+**Use `output_dir` parameter to save files directly to your working directory.**
 
-### Pattern for Each Query
+### Pattern for Each Query (Recommended)
 
 ```
 FOR EACH entity/combo:
-    1. Run MCP query (BioBridge or ULTRA)
-    2. IF query produces output file:
-        a. IMMEDIATELY mv output file to working_dir/data/<mcp>/
-        b. Read the MOVED file (not the original path)
-        c. Process/extract scores
-    3. Record results
+    1. Run MCP query with output_dir parameter
+    2. Read the output file directly (no move needed!)
+    3. Process/extract scores
     4. Proceed to next entity/combo
 ```
 
 ### Example: ULTRA Individual Gene Queries
 
 ```python
+data_dir = f"./kgpred_{context}_{date}/data/ultra/individual"
+os.makedirs(data_dir, exist_ok=True)
+
 for gene in genes:
-    # Step 1: Run query
+    # Step 1: Run query with output_dir - files saved directly!
     result = mcp__ultra-inference__predict_tail_entities(
         head_entity=gene,
-        relation="associated with"
+        relation="associated with",
+        output_dir=data_dir  # NEW: Direct output
     )
 
-    # Step 2a: IMMEDIATELY move file
-    src = result['output_file']
-    dest = f"./kgpred_{context}_{date}/data/ultra/individual/{gene}_predictions.parquet"
-    shutil.move(src, dest)  # Move BEFORE processing!
-
-    # Step 2b-c: Read the MOVED file and process
-    df = pd.read_parquet(dest)
+    # Step 2: Read directly - no move needed!
+    df = pd.read_parquet(result['output_file'])
     scores = extract_disease_scores(df, disease_list)
 
     # Step 3: Record
@@ -966,22 +975,19 @@ for gene in genes:
 ### Example: ULTRA Combo Queries
 
 ```python
+data_dir = f"./kgpred_{context}_{date}/data/ultra/combo"
+os.makedirs(data_dir, exist_ok=True)
+
 for combo in combos:
-    # Step 1: Run query
+    # Step 1: Run query with output_dir - files saved directly!
     result = mcp__ultraquery-inference__answer_complex_query(
         query_structure=build_intersection_query(combo),
-        top_k=5  # Only affects API response; parquet files contain ALL predictions
+        top_k=5,  # Only affects API response; parquet files contain ALL predictions
+        output_dir=data_dir  # NEW: Direct output
     )
 
-    # Step 2a: IMMEDIATELY move files (parquet has ALL data regardless of top_k)
-    combo_name = "_".join(combo)
-    shutil.move(result['output_file_filtered'],
-                f"./data/ultra/combo/{combo_name}_filtered.parquet")
-    shutil.move(result['output_file_all'],
-                f"./data/ultra/combo/{combo_name}_all.parquet")
-
-    # Step 2b-c: Read and process from moved location
-    df = pd.read_parquet(f"./data/ultra/combo/{combo_name}_filtered.parquet")
+    # Step 2: Read directly - no move needed!
+    df = pd.read_parquet(result['output_file_filtered'])
 
     # CRITICAL: Filter to entity1_type only and recalculate pct_rank
     df_disease = df[df['entity_type'] == 'disease'].copy()
@@ -991,17 +997,18 @@ for combo in combos:
     scores = extract_disease_scores(df_disease, disease_list)
 
     # Step 3: Record
+    combo_name = "_".join(combo)
     results[combo_name] = scores
 
     # Step 4: Loop continues to next combo
 ```
 
-### Why Immediate Move Matters
+### Benefits of output_dir Parameter
 
-1. **MCP output paths may be volatile** - Files could be overwritten by next query
-2. **User accessibility** - Working directory is always accessible
-3. **Traceability** - Each query's output is preserved with descriptive name
-4. **Reproducibility** - All data files are in one predictable location
+1. **No file moves needed** - Files saved directly to working directory
+2. **Simpler workflow** - One less step per query
+3. **No volatility risk** - Files are in user-controlled location from start
+4. **Backward compatible** - Omit output_dir to use legacy behavior
 
 ---
 

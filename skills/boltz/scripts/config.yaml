@@ -1,0 +1,22 @@
+organism: "Homo sapiens"
+organism_id: 9606
+
+boltz:
+  use_msa_server: true
+  recycling_steps: 3
+  diffusion_samples: 1
+  sampling_steps: 200
+  output_format: mmcif
+  use_potentials: false
+  model: boltz2
+  timeout_seconds: 3600
+  rerun_confidence_threshold: 0.5
+
+output:
+  pdb_dir_suffix: "_pdb"
+  boltz_dir: "."
+  summary_file: "results_summary.json"
+
+gpu:
+  utilization_threshold: 10.0
+  max_parallel: null

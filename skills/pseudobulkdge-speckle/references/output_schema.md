@@ -154,9 +154,9 @@ Same format as speckle output, filtered to FDR significant results.
 
 ---
 
-### report_data/CLAUDE_CODE_INSTRUCTIONS.md
+### report_data/CODEX_INSTRUCTIONS.md
 
-Instructions for Claude Code ultrathink interpretation.
+Instructions for Codex XHIGH interpretation.
 
 Contains:
 - List of files to process

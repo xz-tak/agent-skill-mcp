@@ -279,6 +279,7 @@ get_stats_path <- function(output_file, suffix = "_pairwise_stats") {
 #'
 #' @param gsea_data Either a file path to GSEA results table, data.frame/RDS object, or NULL if rerun_gsea=TRUE
 #' @param signatures Character vector of signature names to include (NULL = all)
+#' @param comparisons Character vector of comparison names to include, in desired order (NULL = all)
 #' @param output_file Output file path (PNG)
 #' @param nes_col Column name for NES values (default: "NES")
 #' @param pval_col Column name for adjusted p-values (default: "p.adjust")
@@ -301,11 +302,13 @@ get_stats_path <- function(output_file, suffix = "_pairwise_stats") {
 #' @param deg_data Required if rerun_gsea=TRUE: file path to DEG results (summstats file)
 #' @param gene_sets Required if rerun_gsea=TRUE: named list of gene sets (character vectors)
 #' @param pval_cutoff P-value cutoff for GSEA when rerunning (default: 1 to include all results)
+#' @param export_table Export GSEA results table with leading edge genes (default: TRUE)
 #' @return Invisibly returns the Heatmap object
 #' @export
 plot_signature_heatmap <- function(
     gsea_data = NULL,
     signatures = NULL,
+    comparisons = NULL,
     output_file = "figures/signature_NES_heatmap.png",
     nes_col = "NES",
     pval_col = "p.adjust",
@@ -327,10 +330,14 @@ plot_signature_heatmap <- function(
     rerun_gsea = FALSE,
     deg_data = NULL,
     gene_sets = NULL,
-    pval_cutoff = 1
+    pval_cutoff = 1,
+    export_table = TRUE
 ) {
   # Handle rerun_gsea case
   if (rerun_gsea) {
+    # Save user's requested comparisons before overwriting
+    requested_comparisons <- comparisons
+
     if (is.null(deg_data)) {
       stop("deg_data is required when rerun_gsea=TRUE")
     }
@@ -353,10 +360,10 @@ plot_signature_heatmap <- function(
 
     # Run GSEA for each comparison if comparison column exists
     if (comp_col %in% colnames(deg_df)) {
-      comparisons <- unique(deg_df[[comp_col]])
+      all_comparisons <- unique(deg_df[[comp_col]])
       all_results <- list()
 
-      for (comp in comparisons) {
+      for (comp in all_comparisons) {
         comp_deg <- deg_df[deg_df[[comp_col]] == comp, ]
         comp_gsea <- run_gsea_for_plot(comp_deg, gene_sets, pval_cutoff)
         if (!is.null(comp_gsea)) {
@@ -405,6 +412,14 @@ plot_signature_heatmap <- function(
   # Filter by signatures if specified
   if (!is.null(signatures)) {
     gsea_df <- gsea_df[gsea_df[[sig_col]] %in% signatures, ]
+  }
+
+  # Filter and order comparisons if specified (use saved value if rerun_gsea)
+  filter_comparisons <- if (exists("requested_comparisons")) requested_comparisons else comparisons
+  if (!is.null(filter_comparisons)) {
+    gsea_df <- gsea_df[gsea_df[[comp_col]] %in% filter_comparisons, ]
+    # Reorder to match specified order
+    gsea_df[[comp_col]] <- factor(gsea_df[[comp_col]], levels = filter_comparisons)
   }
 
   if (nrow(gsea_df) == 0) {
@@ -494,8 +509,8 @@ plot_signature_heatmap <- function(
   dir.create(dirname(static_output), showWarnings = FALSE, recursive = TRUE)
 
   # Save plot
-  png(static_output, width = width, height = height, units = "in", res = 300)
-  draw(ht, heatmap_legend_side = "right")
+  png(static_output, width = width, height = height, units = "in", res = 720)
+  draw(ht, heatmap_legend_side = "right", padding = unit(c(2, 0.5, 0.5, 0.5), "cm"))
   dev.off()
 
   message(paste("Saved signature heatmap to:", static_output))
@@ -539,6 +554,32 @@ plot_signature_heatmap <- function(
     html_file <- get_interactive_path(output_file)
     saveWidget(p_interactive, html_file, selfcontained = TRUE)
     message(paste("Saved interactive heatmap to:", html_file))
+  }
+
+  # Export GSEA results table with leading edge genes
+  if (export_table) {
+    table_output <- get_stats_path(output_file, suffix = "_gsea_results")
+
+    # Build list of columns to export
+    export_cols <- c(sig_col, comp_col, nes_col, pval_col)
+
+    # Add optional columns if they exist
+    optional_cols <- c("pvalue", "setSize", "enrichmentScore", "leading_edge", "core_enrichment")
+    for (col in optional_cols) {
+      if (col %in% colnames(gsea_df)) {
+        export_cols <- c(export_cols, col)
+      }
+    }
+
+    export_df <- gsea_df[, intersect(export_cols, colnames(gsea_df)), drop = FALSE]
+
+    # Convert core_enrichment from /-separated to semicolon-separated for easier parsing
+    if ("core_enrichment" %in% colnames(export_df)) {
+      export_df$core_enrichment <- gsub("/", ";", export_df$core_enrichment)
+    }
+
+    write.table(export_df, table_output, sep = "\t", row.names = FALSE, quote = FALSE)
+    message(paste("Saved GSEA results table to:", table_output))
   }
 
   invisible(ht)
@@ -693,7 +734,7 @@ plot_deg_heatmap <- function(
     dir.create(dirname(static_out_file), showWarnings = FALSE, recursive = TRUE)
 
     # Save plot
-    png(static_out_file, width = base_width, height = adj_height, units = "in", res = 300)
+    png(static_out_file, width = base_width, height = adj_height, units = "in", res = 720)
     draw(ht, heatmap_legend_side = "right")
     dev.off()
 
@@ -990,7 +1031,7 @@ plot_expression_heatmap <- function(
     dir.create(dirname(static_out_file), showWarnings = FALSE, recursive = TRUE)
 
     # Save plot
-    png(static_out_file, width = base_width, height = adj_height, units = "in", res = 300)
+    png(static_out_file, width = base_width, height = adj_height, units = "in", res = 720)
     draw(ht, heatmap_legend_side = "right", annotation_legend_side = "right",
          column_title = NULL)  # This hides the split labels
     dev.off()
@@ -1522,7 +1563,7 @@ plot_gsva_boxplot <- function(
       dir.create(dirname(static_sig_output), showWarnings = FALSE, recursive = TRUE)
 
       # Save individual plot
-      ggsave(static_sig_output, p, width = adj_width, height = height, dpi = 300)
+      ggsave(static_sig_output, p, width = adj_width, height = height, dpi = 720)
       message(paste("Saved GSVA boxplot to:", static_sig_output))
 
       # Generate interactive HTML version
@@ -1569,7 +1610,7 @@ plot_gsva_boxplot <- function(
     dir.create(dirname(static_output), showWarnings = FALSE, recursive = TRUE)
 
     # Save plot
-    ggsave(static_output, p, width = width, height = height, dpi = 300)
+    ggsave(static_output, p, width = width, height = height, dpi = 720)
     message(paste("Saved GSVA boxplot to:", static_output))
 
     # Generate interactive HTML version
@@ -1657,7 +1698,7 @@ plot_gsva_boxplot <- function(
     dir.create(dirname(static_output), showWarnings = FALSE, recursive = TRUE)
 
     # Save plot
-    ggsave(static_output, p, width = width, height = height, dpi = 300)
+    ggsave(static_output, p, width = width, height = height, dpi = 720)
 
     message(paste("Saved GSVA boxplot to:", static_output))
     message(paste("Signatures plotted:", length(available_sigs), "| Treatment groups:", n_treatments))
@@ -1676,6 +1717,587 @@ plot_gsva_boxplot <- function(
 }
 
 # =============================================================================
+# Function 5: GSVA + Limma Differential Expression Analysis
+# =============================================================================
+
+#' Parse GMT file to named list of gene vectors
+#' @param gmt_file Path to GMT file
+#' @return Named list where names are set names and values are gene vectors
+parse_gmt_file <- function(gmt_file) {
+  if (!file.exists(gmt_file)) {
+    stop(paste("GMT file not found:", gmt_file))
+  }
+
+  gmt_lines <- readLines(gmt_file)
+  gene_sets <- list()
+
+  for (line in gmt_lines) {
+    fields <- strsplit(line, "\t")[[1]]
+    if (length(fields) < 3) next
+
+    set_name <- fields[1]
+    # Skip description (field 2), genes start at field 3
+    genes <- fields[3:length(fields)]
+    genes <- genes[genes != ""]
+    gene_sets[[set_name]] <- genes
+  }
+
+  gene_sets
+}
+
+#' Run GSVA + Limma Differential Expression Analysis
+#'
+#' Computes GSVA scores for custom gene signatures, runs limma-based differential
+#' expression across treatment comparisons, and generates volcano plots and summary heatmap.
+#'
+#' @param counts_file Path to raw counts file (CSV/TSV with Gene.name column or gene symbols as rownames)
+#' @param metadata_file Path to metadata file (TSV with sample IDs as rownames)
+#' @param gmt_file Path to GMT file with gene signatures (or named list of gene vectors)
+#' @param comparisons List of comparisons, each with name/numerator/denominator elements
+#' @param group_col Column in metadata for treatment groups (default "Treatment_std")
+#' @param output_dir Base output directory (default ".")
+#' @param padj_cutoff Adjusted p-value threshold for significance markers (default 0.05)
+#' @param pval_cutoff Nominal p-value threshold for volcano/heatmap significance (default 0.05, used for asterisks)
+#' @param cluster_rows Cluster rows in heatmap (default FALSE for reproducible ordering)
+#' @param cluster_columns Cluster columns in heatmap (default FALSE for reproducible ordering)
+#' @param interactive Generate interactive HTML plots (default TRUE)
+#' @param width Heatmap width in inches (default 14)
+#' @param height Heatmap height in inches (default 10)
+#' @param volcano_width Volcano plot width in inches (default 10)
+#' @param volcano_height Volcano plot height in inches (default 8)
+#' @return List with gsva_matrix, limma_results, output_files
+#' @export
+run_gsva_limma_de <- function(
+    counts_file,
+    metadata_file,
+    gmt_file,
+    comparisons,
+    group_col = "Treatment_std",
+    output_dir = ".",
+    padj_cutoff = 0.05,
+    pval_cutoff = 0.05,
+    cluster_rows = TRUE,
+    cluster_columns = TRUE,
+    column_order = NULL,
+    comparisons_filter = NULL,
+    row_order = NULL,
+    column_labels = NULL,
+    limma_results_file = NULL,
+    interactive = TRUE,
+    width = 14,
+    height = 10,
+    volcano_width = 10,
+    volcano_height = 8
+) {
+  # Load additional required packages
+  suppressPackageStartupMessages({
+    library(GSVA)
+    library(limma)
+    library(ggrepel)
+  })
+
+  # Create output directories
+  gsva_deg_dir <- file.path(output_dir, "deg/gsva")
+  gsva_fig_dir <- file.path(output_dir, "figures/gsva")
+  dir.create(gsva_deg_dir, recursive = TRUE, showWarnings = FALSE)
+  dir.create(gsva_fig_dir, recursive = TRUE, showWarnings = FALSE)
+
+  # ============================================================
+  # REPLOT MODE: Load existing limma results and skip to heatmap
+  # ============================================================
+  if (!is.null(limma_results_file)) {
+    message("========================================")
+    message("REPLOT MODE: Loading existing limma results")
+    message("========================================\n")
+
+    combined_results <- read.delim(limma_results_file, stringsAsFactors = FALSE)
+    message(sprintf("Loaded %d rows from: %s", nrow(combined_results), limma_results_file))
+    message(sprintf("Signatures: %d", length(unique(combined_results$signature))))
+    message(sprintf("Comparisons: %d", length(unique(combined_results$comparison))))
+
+    # Jump directly to heatmap generation
+    # (combined_results is already available, skip GSVA and limma)
+  } else {
+    message("========================================")
+    message("GSVA + Limma Differential Expression Analysis")
+    message("========================================\n")
+
+  # ============================================================
+  # 1. Load gene signatures (GMT file or list)
+  # ============================================================
+  message("Loading gene signatures...")
+
+  if (is.list(gmt_file) && !is.character(gmt_file)) {
+    # Already a named list of gene vectors
+    gene_sets <- gmt_file
+  } else if (is.character(gmt_file)) {
+    gene_sets <- parse_gmt_file(gmt_file)
+  } else {
+    stop("gmt_file must be a file path or named list of gene vectors")
+  }
+
+  message(sprintf("Loaded %d gene signatures:", length(gene_sets)))
+  for (name in names(gene_sets)) {
+    message(sprintf("  - %s: %d genes", name, length(gene_sets[[name]])))
+  }
+
+  # ============================================================
+  # 2. Load raw counts and metadata
+  # ============================================================
+  message("\nLoading raw counts...")
+
+  # Detect delimiter by reading first line
+  first_line <- readLines(counts_file, n = 1)
+  if (grepl(",", first_line)) {
+    counts <- read.csv(counts_file, row.names = NULL, check.names = FALSE)
+  } else {
+    counts <- read.delim(counts_file, row.names = NULL, check.names = FALSE)
+  }
+  message(sprintf("Raw counts dimensions: %d genes x %d columns", nrow(counts), ncol(counts)))
+
+  # Handle Gene.name column if present (may be any position)
+  if ("Gene.name" %in% colnames(counts)) {
+    # Handle NA values
+    if ("ID" %in% colnames(counts)) {
+      counts$Gene.name[is.na(counts$Gene.name)] <- counts$ID[is.na(counts$Gene.name)]
+    }
+    rownames(counts) <- make.unique(counts$Gene.name)
+    counts <- counts[, !colnames(counts) %in% c("ID", "Gene.name")]
+  } else if ("ID" %in% colnames(counts)) {
+    # Use ID column as rownames if no Gene.name
+    rownames(counts) <- make.unique(counts$ID)
+    counts <- counts[, colnames(counts) != "ID"]
+  }
+
+  counts <- as.matrix(counts)
+  message(sprintf("Processed counts dimensions: %d genes x %d samples", nrow(counts), ncol(counts)))
+
+  # Load metadata
+  message("\nLoading metadata...")
+  metadata <- read.delim(metadata_file, row.names = 1, stringsAsFactors = FALSE)
+  message(sprintf("Metadata: %d samples", nrow(metadata)))
+
+  # Verify group column exists
+  if (!group_col %in% colnames(metadata)) {
+    stop(sprintf("Group column '%s' not found in metadata. Available columns: %s",
+                 group_col, paste(colnames(metadata), collapse = ", ")))
+  }
+
+  # Match samples between counts and metadata
+  common_samples <- intersect(colnames(counts), rownames(metadata))
+  if (length(common_samples) == 0) {
+    stop("No matching samples between counts columns and metadata rows")
+  }
+  counts <- counts[, common_samples]
+  metadata <- metadata[common_samples, , drop = FALSE]
+  message(sprintf("Matched samples: %d", length(common_samples)))
+
+  # Check gene overlap
+  all_sig_genes <- unique(unlist(gene_sets))
+  overlap <- sum(all_sig_genes %in% rownames(counts))
+  message(sprintf("\nGene overlap: %d/%d signature genes found in counts (%.1f%%)",
+                  overlap, length(all_sig_genes), 100*overlap/length(all_sig_genes)))
+
+  # ============================================================
+  # 3. Compute GSVA (v2.0 API with Poisson kernel)
+  # ============================================================
+  message("\n========================================")
+  message("Computing GSVA scores...")
+  message("========================================")
+  message("Parameters: kcdf='Poisson' (for count data)")
+
+  gsva_param <- gsvaParam(
+    exprData = counts,
+    geneSets = gene_sets,
+    kcdf = "Poisson"
+  )
+
+  gsva_matrix <- gsva(gsva_param, verbose = TRUE)
+  message(sprintf("\nGSVA results dimensions: %d signatures x %d samples",
+                  nrow(gsva_matrix), ncol(gsva_matrix)))
+
+  # Save GSVA matrix
+  gsva_file <- file.path(gsva_deg_dir, "gsva_scores.txt")
+  write.table(gsva_matrix, gsva_file, sep = "\t", quote = FALSE, row.names = TRUE)
+  message(sprintf("GSVA matrix saved to: %s", gsva_file))
+
+  # ============================================================
+  # 4. Validate comparisons
+  # ============================================================
+  message(sprintf("\nValidating %d comparisons...", length(comparisons)))
+
+  # Make Treatment column a factor
+  metadata[[group_col]] <- factor(metadata[[group_col]])
+  available_groups <- levels(metadata[[group_col]])
+
+  # Validate each comparison
+  valid_comparisons <- list()
+  for (comp in comparisons) {
+    if (!all(c("name", "numerator", "denominator") %in% names(comp))) {
+      warning(sprintf("Comparison missing required fields (name, numerator, denominator): %s",
+                      paste(names(comp), collapse = ", ")))
+      next
+    }
+
+    if (!comp$numerator %in% available_groups) {
+      warning(sprintf("Numerator '%s' not found in %s. Available: %s",
+                      comp$numerator, group_col, paste(available_groups, collapse = ", ")))
+      next
+    }
+
+    if (!comp$denominator %in% available_groups) {
+      warning(sprintf("Denominator '%s' not found in %s. Available: %s",
+                      comp$denominator, group_col, paste(available_groups, collapse = ", ")))
+      next
+    }
+
+    valid_comparisons <- append(valid_comparisons, list(comp))
+  }
+
+  if (length(valid_comparisons) == 0) {
+    stop("No valid comparisons found")
+  }
+  message(sprintf("Valid comparisons: %d", length(valid_comparisons)))
+
+  # ============================================================
+  # 5. Run limma DE for each comparison
+  # ============================================================
+  message("\n========================================")
+  message("Running limma differential expression...")
+  message("========================================")
+
+  # Cell-means model: ~0 + group_col
+  design <- model.matrix(as.formula(paste0("~0 + ", group_col)), data = metadata)
+
+  # Get original column names (with special characters)
+  original_colnames <- gsub(group_col, "", colnames(design))
+
+  # Convert to valid R names for makeContrasts
+  valid_colnames <- make.names(original_colnames)
+  colnames(design) <- valid_colnames
+
+  # Create mapping from original names to valid names
+  name_map <- setNames(valid_colnames, original_colnames)
+
+  message("\nDesign matrix groups (original -> valid R names):")
+  for (i in seq_along(original_colnames)) {
+    message(sprintf("  %s -> %s", original_colnames[i], valid_colnames[i]))
+  }
+
+  # Fit initial model on GSVA matrix
+  fit <- lmFit(gsva_matrix, design)
+
+  # Store all limma results
+  all_results <- list()
+
+  for (comp in valid_comparisons) {
+    message(sprintf("\nProcessing: %s", comp$name))
+
+    # Convert comparison names to valid R names
+    num_valid <- name_map[comp$numerator]
+    den_valid <- name_map[comp$denominator]
+
+    contrast_string <- paste0(num_valid, " - ", den_valid)
+    message(sprintf("  Contrast: %s", contrast_string))
+
+    contrast_matrix <- makeContrasts(contrasts = contrast_string, levels = design)
+
+    # Fit contrast and apply eBayes
+    fit2 <- contrasts.fit(fit, contrast_matrix)
+    fit2 <- eBayes(fit2)
+
+    # Extract results
+    res <- topTable(fit2, coef = 1, number = Inf, sort.by = "none")
+    res$signature <- rownames(res)
+    res$comparison <- comp$name
+
+    # Save individual limma results
+    res_file <- file.path(gsva_deg_dir, paste0(comp$name, "_limma.txt"))
+    write.table(res, res_file, sep = "\t", quote = FALSE, row.names = FALSE)
+    message(sprintf("  Results saved: %s", basename(res_file)))
+    message(sprintf("  Significant (padj < %.2f): %d signatures", padj_cutoff, sum(res$adj.P.Val < padj_cutoff)))
+
+    all_results[[comp$name]] <- res
+  }
+
+  # ============================================================
+  # 6. Combine all results
+  # ============================================================
+  combined_results <- bind_rows(all_results)
+  combined_file <- file.path(gsva_deg_dir, "all_limma_combined.txt")
+  write.table(combined_results, combined_file, sep = "\t", quote = FALSE, row.names = FALSE)
+  message(sprintf("\nCombined results saved: %s", combined_file))
+  message(sprintf("Total rows: %d (%d signatures x %d comparisons)",
+                  nrow(combined_results), nrow(gsva_matrix), length(all_results)))
+
+  # ============================================================
+  # 7. Generate volcano plots (using nominal P.Value for y-axis)
+  # ============================================================
+  message("\n========================================")
+  message("Generating volcano plots...")
+  message("========================================")
+
+  volcano_colors <- c("down" = "#3366CC", "up" = "#CC3333", "NS" = "grey50")
+  volcano_files <- character()
+
+  for (comp_name in names(all_results)) {
+    res <- all_results[[comp_name]]
+
+    # Classify significance using nominal p-value (better for small signature panels)
+    res$significance <- ifelse(res$P.Value >= pval_cutoff, "NS",
+                               ifelse(res$logFC > 0, "up", "down"))
+
+    # Label only significant signatures
+    res$delabel <- ifelse(res$P.Value < pval_cutoff, res$signature, NA)
+
+    # Create volcano plot
+    p <- ggplot(res, aes(x = logFC, y = -log10(P.Value), color = significance)) +
+      geom_point(size = 3, alpha = 0.8) +
+      scale_color_manual(values = volcano_colors,
+                         labels = c("down" = "Down", "up" = "Up", "NS" = "Not Sig.")) +
+      geom_hline(yintercept = -log10(pval_cutoff), linetype = "dashed", color = "grey40") +
+      geom_vline(xintercept = c(-0.5, 0.5), linetype = "dotted", color = "grey60") +
+      geom_text_repel(aes(label = delabel),
+                      size = 3,
+                      max.overlaps = 20,
+                      box.padding = 0.5,
+                      segment.color = "grey50",
+                      na.rm = TRUE) +
+      labs(title = comp_name,
+           subtitle = sprintf("p < %.2f: %d signatures", pval_cutoff, sum(res$P.Value < pval_cutoff)),
+           x = "Log2 Fold Change (GSVA score)",
+           y = "-log10(p-value)",
+           color = "Regulation") +
+      theme_bw() +
+      theme(plot.title = element_text(size = 12, face = "bold"),
+            plot.subtitle = element_text(size = 10),
+            legend.position = "right",
+            panel.grid.minor = element_blank())
+
+    volcano_file <- file.path(gsva_fig_dir, paste0("volcano_", comp_name, ".png"))
+    ggsave(volcano_file, p, width = volcano_width, height = volcano_height, dpi = 150)
+    message(sprintf("  Saved: %s", basename(volcano_file)))
+    volcano_files <- c(volcano_files, volcano_file)
+
+    # Generate interactive version
+    if (interactive) {
+      interactive_dir <- file.path(gsva_fig_dir, "interactive")
+      dir.create(interactive_dir, recursive = TRUE, showWarnings = FALSE)
+
+      p_interactive <- ggplotly(p, tooltip = c("x", "y", "color"))
+      html_file <- file.path(interactive_dir, paste0("volcano_", comp_name, "_interactive.html"))
+      saveWidget(p_interactive, html_file, selfcontained = TRUE)
+      message(sprintf("  Saved interactive: %s", basename(html_file)))
+    }
+  }
+  } # End of else block (full pipeline mode)
+
+  # ============================================================
+  # 8. Generate summary heatmap (using nominal P.Value for asterisks)
+  # ============================================================
+  message("\n========================================")
+  message("Generating summary heatmap...")
+  message("========================================")
+
+  # Filter and order comparisons for heatmap
+  combined_for_heatmap <- combined_results
+
+  # Filter comparisons if specified
+  if (!is.null(comparisons_filter)) {
+    combined_for_heatmap <- combined_for_heatmap %>%
+      filter(comparison %in% comparisons_filter)
+    message(sprintf("  Filtered to %d comparisons for heatmap", length(unique(combined_for_heatmap$comparison))))
+  }
+
+  # Apply custom column order if specified
+  if (!is.null(column_order)) {
+    # Validate column_order contains valid comparisons
+    valid_cols <- intersect(column_order, unique(combined_for_heatmap$comparison))
+    if (length(valid_cols) == 0) {
+      warning("No valid comparisons in column_order, using default order")
+    } else {
+      combined_for_heatmap$comparison <- factor(
+        combined_for_heatmap$comparison,
+        levels = valid_cols
+      )
+      combined_for_heatmap <- combined_for_heatmap %>%
+        filter(!is.na(comparison)) %>%
+        arrange(comparison)
+      message(sprintf("  Applied custom column order: %d comparisons", length(valid_cols)))
+    }
+  }
+
+  # Apply custom row order if specified
+  if (!is.null(row_order)) {
+    valid_rows <- intersect(row_order, unique(combined_for_heatmap$signature))
+    if (length(valid_rows) == 0) {
+      warning("No valid signatures in row_order, using default order")
+    } else {
+      combined_for_heatmap$signature <- factor(
+        combined_for_heatmap$signature,
+        levels = valid_rows
+      )
+      combined_for_heatmap <- combined_for_heatmap %>%
+        filter(!is.na(signature)) %>%
+        arrange(signature)
+      message(sprintf("  Applied custom row order: %d signatures", length(valid_rows)))
+    }
+  }
+
+  # Pivot to wide format for logFC
+  logfc_matrix <- combined_for_heatmap %>%
+    select(signature, comparison, logFC) %>%
+    pivot_wider(names_from = comparison, values_from = logFC) %>%
+    column_to_rownames("signature") %>%
+    as.matrix()
+
+  # Pivot to wide format for nominal p-value (better for small signature panels)
+  pval_matrix <- combined_for_heatmap %>%
+    select(signature, comparison, P.Value) %>%
+    pivot_wider(names_from = comparison, values_from = P.Value) %>%
+    column_to_rownames("signature") %>%
+    as.matrix()
+
+  # Apply asterisks using existing pval_to_stars helper
+  asterisk_matrix <- matrix(sapply(pval_matrix, pval_to_stars),
+                            nrow = nrow(pval_matrix),
+                            ncol = ncol(pval_matrix),
+                            dimnames = dimnames(pval_matrix))
+
+  # Determine color scale limits (centered at 0)
+  max_abs <- max(abs(logfc_matrix), na.rm = TRUE)
+  col_limit <- ceiling(max_abs * 10) / 10  # Round up to 1 decimal
+  if (col_limit == 0) col_limit <- 1
+
+  # BWR colormap centered at 0
+  col_fun <- colorRamp2(c(-col_limit, 0, col_limit), c("blue", "white", "red"))
+
+  # Apply custom column labels or use comparison names directly
+  if (!is.null(column_labels)) {
+    short_names <- column_labels[colnames(logfc_matrix)]
+    # Fall back to original names for any missing labels
+    short_names[is.na(short_names)] <- colnames(logfc_matrix)[is.na(short_names)]
+    message(sprintf("  Applied custom column labels"))
+  } else {
+    # Default: use comparison names directly from matrix
+    short_names <- colnames(logfc_matrix)
+  }
+
+  # Create heatmap
+  ht <- Heatmap(logfc_matrix,
+                name = "logFC",
+                col = col_fun,
+                cluster_rows = cluster_rows,
+                cluster_columns = cluster_columns,
+                show_row_dend = cluster_rows,
+                show_column_dend = cluster_columns,
+                row_names_side = "left",
+                column_names_side = "bottom",
+                column_names_rot = 45,
+                column_labels = short_names,
+                row_names_gp = gpar(fontsize = 9),
+                column_names_gp = gpar(fontsize = 8),
+                cell_fun = function(j, i, x, y, width, height, fill) {
+                  grid.text(asterisk_matrix[i, j], x, y,
+                            gp = gpar(fontsize = 8, col = "black"))
+                },
+                heatmap_legend_param = list(
+                  title = "logFC",
+                  at = c(-col_limit, 0, col_limit),
+                  labels = c(sprintf("-%.1f", col_limit), "0", sprintf("%.1f", col_limit))
+                ),
+                column_title = "GSVA Signature Differential Expression",
+                column_title_gp = gpar(fontsize = 14, fontface = "bold"))
+
+  # Save heatmap
+  heatmap_file <- file.path(gsva_fig_dir, "signatures_heatmap.png")
+  png(heatmap_file, width = width, height = height, units = "in", res = 150)
+  draw(ht, padding = unit(c(2, 20, 2, 2), "mm"))
+  dev.off()
+  message(sprintf("Heatmap saved: %s", heatmap_file))
+
+  # Generate interactive heatmap
+  if (interactive) {
+    interactive_dir <- file.path(gsva_fig_dir, "interactive")
+    dir.create(interactive_dir, recursive = TRUE, showWarnings = FALSE)
+
+    # Create hover text matrix
+    hover_matrix <- matrix(
+      paste0("Signature: ", rownames(logfc_matrix)[row(logfc_matrix)],
+             "\nComparison: ", colnames(logfc_matrix)[col(logfc_matrix)],
+             "\nlogFC: ", round(logfc_matrix, 3),
+             "\np-value: ", format(pval_matrix, digits = 3, scientific = TRUE),
+             "\nSignificance: ", asterisk_matrix),
+      nrow = nrow(logfc_matrix),
+      ncol = ncol(logfc_matrix),
+      dimnames = dimnames(logfc_matrix)
+    )
+
+    # Create interactive heatmap with heatmaply
+    p_heatmap <- heatmaply(
+      logfc_matrix,
+      custom_hovertext = hover_matrix,
+      colors = colorRampPalette(c("blue", "white", "red"))(100),
+      dendrogram = if (cluster_rows || cluster_columns) "both" else "none",
+      showticklabels = c(TRUE, TRUE),
+      main = "GSVA Signature Differential Expression",
+      xlab = "Comparison",
+      ylab = "Signature",
+      cellnote = asterisk_matrix,
+      cellnote_textposition = "middle center",
+      cellnote_size = 10
+    )
+
+    html_heatmap_file <- file.path(interactive_dir, "signatures_heatmap_interactive.html")
+    saveWidget(p_heatmap, html_heatmap_file, selfcontained = TRUE)
+    message(sprintf("Interactive heatmap saved: %s", basename(html_heatmap_file)))
+  }
+
+  # ============================================================
+  # Summary
+  # ============================================================
+  message("\n========================================")
+  message("ANALYSIS COMPLETE")
+  message("========================================")
+
+  if (!is.null(limma_results_file)) {
+    # Replot mode - simpler summary
+    message(sprintf("Loaded from: %s", limma_results_file))
+    message(sprintf("Summary heatmap: %s", heatmap_file))
+    message("\nSignificance summary (p < ", pval_cutoff, "):")
+    print(table(combined_results$P.Value < pval_cutoff))
+
+    output_files <- list(heatmap = heatmap_file)
+    invisible(list(
+      combined_results = combined_results,
+      output_files = output_files
+    ))
+  } else {
+    # Full pipeline mode
+    message(sprintf("GSVA matrix: %s", gsva_file))
+    message(sprintf("Combined limma results: %s", combined_file))
+    message(sprintf("Volcano plots: %s/volcano_*.png", gsva_fig_dir))
+    message(sprintf("Summary heatmap: %s", heatmap_file))
+    message("\nSignificance summary (p < ", pval_cutoff, "):")
+    print(table(combined_results$P.Value < pval_cutoff))
+
+    output_files <- list(
+      gsva_matrix = gsva_file,
+      combined_results = combined_file,
+      volcano_plots = volcano_files,
+      heatmap = heatmap_file
+    )
+
+    invisible(list(
+      gsva_matrix = gsva_matrix,
+      limma_results = all_results,
+      combined_results = combined_results,
+      output_files = output_files
+    ))
+  }
+}
+
+# =============================================================================
 # Null-coalescing operator (if not available)
 # =============================================================================
 `%||%` <- function(x, y) if (is.null(x)) y else x
@@ -1689,5 +2311,6 @@ message("  1. plot_signature_heatmap() - GSEA/GSVA NES heatmap by comparison")
 message("  2. plot_deg_heatmap() - DEG log2FC heatmap by comparison")
 message("  3. plot_expression_heatmap() - Expression heatmap grouped by treatment")
 message("  4. plot_gsva_boxplot() - GSVA score boxplot by treatment group")
+message("  5. run_gsva_limma_de() - GSVA + limma DE analysis (signatures x comparisons)")
 message("")
 message("Use ?function_name or help(function_name) for detailed usage.")

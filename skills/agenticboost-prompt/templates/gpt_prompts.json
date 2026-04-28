@@ -1,0 +1,112 @@
+{
+  "target_full_name": "For target {targets}, provide the full descriptive name including protein family classification (e.g., 'Glucagon-like peptide 2 receptor (Class B/secretin-family GPCR)'). Be concise.",
+
+  "modality_primary": "For target {targets} **specifically in {indication}**, what is the most promising drug modality? Consider the pathophysiology of {indication} and why this modality would be optimal for this disease context. Options: small molecule, antibody, peptide, bispecific, antibody-drug conjugate, gene therapy. Brief justification.",
+
+  "related_diseases": "For target {targets}, list other diseases/conditions where this target is relevant. **Prioritize conditions that share pathophysiology with {indication}** (e.g., other inflammatory diseases if {indication} is IBD). Include conditions with clinical or preclinical validation. Comma-separated list.",
+
+  "function_summary": "Summarize the biological function of {targets} in 2-3 sentences. **Focus specifically on how this function relates to {indication} pathophysiology.** If {indication} is IBD, emphasize gut inflammation, mucosal barrier, and immune dysregulation. If {indication} is oncology, emphasize tumor biology.",
+
+  "canonical_pathway": "Describe the canonical signaling pathway for {targets}. Include: receptor type, primary downstream effectors, and key cellular outcomes. **Emphasize pathway components that are dysregulated in {indication}.**",
+
+  "expression_cells": "Which cell types express {targets}? **Focus on disease-relevant cells in {indication} context.** For IBD: emphasize intestinal epithelium, lamina propria immune cells, fibroblasts. Include both physiological and pathological expression patterns.",
+
+  "effector_cells": "For {targets}, identify the primary direct responders and downstream effector cells/pathways. **In the context of {indication}, which effector cells drive disease pathology?** Distinguish between direct and indirect effects on disease-relevant cells.",
+
+  "moa_rationale": "Provide a scientific rationale for targeting {targets} **specifically in {indication}**. Address:\n1. Unmet medical need in {indication}\n2. How {targets} biology drives {indication} pathophysiology\n3. Clinical validation (if any) in {indication} or related conditions\n\n**Be specific to {indication} - do not provide generic target biology.**\n\nContext from Cortellis:\n{context}",
+
+  "combo_opportunities": "For {targets} in {indication}, what are the best combination therapy opportunities? **Consider approved drugs specifically for {indication}** that could provide complementary mechanisms. For IBD, consider anti-TNFs, anti-integrins, JAK inhibitors, S1P modulators. Rank by biological rationale.",
+
+  "shared_pathways": "Based on the pathway data, list the top shared biological pathways for {targets} **that are most relevant to {indication}**. Include pathway database source (KEGG, Reactome, MSigDB) in parentheses. Comma-separated list.",
+
+  "unique_pathways_T1": "List the unique pathways for the first target in {targets} that are not shared with other targets. **Highlight any pathways particularly relevant to {indication}.**",
+
+  "unique_pathways_T2": "List the unique pathways for the second target in {targets} that are not shared with the first target. **Highlight any pathways particularly relevant to {indication}.**",
+
+  "interaction_path": "Describe the shortest protein-protein interaction path between targets in {targets}. Format: Gene1 → Intermediate → Gene2. If no path found, state 'No direct interaction path identified'.",
+
+  "bridge_proteins": "List any bridge/intermediate proteins that connect {targets} in the PPI network. These are proteins that both targets interact with directly or indirectly. **Note if any bridge proteins are implicated in {indication}.**",
+
+  "combo_effect_type": "Based on the pathway overlap and interaction data for {targets}, classify the expected combo effect type **in the context of {indication}**: synergistic (converging pathways, direct interaction), complementary (shared indications, distinct mechanisms), or additive (independent mechanisms). Provide brief justification relevant to {indication} pathophysiology.",
+
+  "pathway_count_shared": "Count of shared pathways between targets. Use data from pathway analysis.",
+
+  "claim_1": "Based on the evidence for {targets} **in {indication}**, state the primary scientific claim supporting this target. **Be specific to {indication} pathophysiology** - reference gut inflammation, immune dysregulation, fibrosis, etc. as appropriate.",
+
+  "claim_2": "State a secondary scientific claim supporting {targets} as a therapeutic target **for {indication}**. This should be distinct from the primary claim and specific to {indication}.",
+
+  "evidence_1a": "Provide the strongest piece of evidence supporting claim 1 for {targets} **in {indication}**. Reference specific studies in {indication} or closely related conditions.",
+
+  "evidence_1b": "Provide additional supporting evidence for claim 1 regarding {targets} **in {indication}**.",
+
+  "evidence_2a": "Provide evidence supporting claim 2 for {targets} **in {indication}**.",
+
+  "evidence_2b": "Provide additional evidence for claim 2 about {targets} **in {indication}**.",
+
+  "counter_1": "What is the strongest counterargument or limitation for targeting {targets} **in {indication}**? Consider {indication}-specific safety concerns, efficacy risks, or biological complexity.",
+
+  "counter_2": "Provide a second counterargument or risk factor for the {targets} program **in {indication}**.",
+
+  "how_we_reconcile": "How can the counterarguments for {targets} **in {indication}** be addressed or reconciled? Provide a balanced perspective with {indication}-specific mitigation strategies.",
+
+  "confidence_1": "Rate confidence in claim 1 for {targets} **in {indication}** (Low/Medium/High) and briefly explain why based on {indication}-specific evidence.",
+
+  "confidence_2": "Rate confidence in claim 2 for {targets} **in {indication}** (Low/Medium/High) and briefly explain why.",
+
+  "assump_1": "What is a key assumption underlying the {targets} program **for {indication}**? This should be testable and specific to {indication}.",
+
+  "failure_mode_1": "What is the primary failure mode for a {targets}-targeting therapy **in {indication}**? Consider mechanism, safety, or efficacy risks specific to {indication}.",
+
+  "failure_mode_2": "Identify a secondary failure mode for the {targets} program **in {indication}**.",
+
+  "mitigation_1": "How can failure mode 1 for {targets} **in {indication}** be mitigated or addressed?",
+
+  "mitigation_2": "How can failure mode 2 for {targets} **in {indication}** be mitigated?",
+
+  "impact_1": "If failure mode 1 occurs, what is the impact on the {targets} program **in {indication}**? (Low/Medium/High impact)",
+
+  "impact_2": "If failure mode 2 occurs, what is the impact **on the {indication} program**? (Low/Medium/High impact)",
+
+  "option_A": "Describe Option A for the {targets} program **in {indication}**: the base case or primary approach. Consider {indication}-specific regulatory path and endpoints.",
+
+  "option_B": "Describe Option B: an alternative approach for targeting {targets} **in {indication}**. Consider different patient populations or endpoints within {indication}.",
+
+  "option_C": "Describe Option C: a de-risked or backup approach for the {targets} program **in {indication}**.",
+
+  "logic_1": "What is the logical framework connecting {targets} biology to therapeutic benefit **in {indication}**? Be specific to {indication} pathophysiology.",
+
+  "logic_2": "Provide the chain of reasoning from target engagement to clinical outcome for {targets} **in {indication}**. Reference {indication}-specific endpoints.",
+
+  "test_1": "What experiment or study could validate or invalidate the key hypothesis for {targets} **in {indication}**? Consider {indication}-relevant models and biomarkers.",
+
+  "flip_1": "What evidence would change your mind about {targets} as a target **for {indication}**?",
+
+  "one_paragraph_why": "In one paragraph, summarize why {targets} is a compelling target **for {indication}**. This is the executive summary - be specific to {indication} unmet needs and how {targets} addresses them.",
+
+  "decision_statement": "State the recommended decision for the {targets} program **in {indication}**: Advance, Pause, or Terminate. Include key conditions specific to {indication} development.",
+
+  "top3_risks": "List the top 3 risks for the {targets} program **in {indication}**. Format: numbered list. Be specific to {indication}.",
+
+  "next_actions": "What are the immediate next actions for the {targets} program **in {indication}**? List 3-5 concrete steps relevant to {indication} development.",
+
+  "criteria_list_with_weights": "List the evaluation criteria for {targets} **in {indication}** with suggested weights (total = 100). Format: Criterion (weight%)",
+
+  "w1": "Suggest weight (1-30) for biological validity criterion for {targets} **in {indication}**.",
+  "w2": "Suggest weight (1-30) for druggability criterion.",
+  "w3": "Suggest weight (1-30) for translational fit criterion **for {indication}**.",
+  "w4": "Suggest weight (1-30) for clinical feasibility criterion **in {indication}**.",
+  "w5": "Suggest weight (1-30) for competitive edge criterion **in {indication}**.",
+
+  "s1": "Score biological validity for {targets} **in {indication}** (1-5 scale).",
+  "s2": "Score druggability (1-5 scale).",
+  "s3": "Score translational fit **for {indication}** (1-5 scale).",
+  "s4": "Score clinical feasibility **in {indication}** (1-5 scale).",
+  "s5": "Score competitive edge **in {indication}** (1-5 scale).",
+
+  "total": "Calculate total weighted score for {targets} **in {indication}**. Format: X.X / 5.0",
+
+  "dr_id": "Generate a decision review ID for {targets}_{indication}. Format: DR-YYYY-XXX",
+  "when": "Current date for the {targets} evaluation.",
+  "who": "Leave as [REVIEWER NAME] for manual completion.",
+  "base_1": "Describe the base case scenario for {targets} **in {indication}**."
+}

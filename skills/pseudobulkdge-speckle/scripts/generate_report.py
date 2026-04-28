@@ -4,13 +4,13 @@ Report Data Preparation Script for Pseudobulk DEG Analysis
 
 ================================================================================
 IMPORTANT: This script ONLY prepares filtered data files.
-The biological interpretation is done by Claude Code at runtime using:
-- Ultrathink: For deep analysis of gene functions, pathway connections, etc.
+The biological interpretation is done by Codex at runtime using:
+- Codex XHIGH: For deep analysis of gene functions, pathway connections, etc.
 - WebFetch: For literature support and validation
 
-After running this script, Claude Code will:
+After running this script, Codex will:
 1. Read each {comparison}_top_deg.tsv, {comparison}_top_pathways.tsv, etc.
-2. Use ultrathink to generate professional biologist interpretation
+2. Use codex xhigh to generate professional biologist interpretation
 3. Use WebFetch to query relevant literature
 4. Append the interpretation directly to the markdown report
 ================================================================================
@@ -134,11 +134,11 @@ def filter_speckle_results(df: pd.DataFrame, fdr_cutoff: float = 0.05) -> pd.Dat
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Prepare filtered results for Claude Code ultrathink interpretation',
+        description='Prepare filtered results for Codex XHIGH interpretation',
         epilog='''
 ================================================================================
 NOTE: This script ONLY prepares data files.
-Claude Code will read these files and use ultrathink + WebFetch for interpretation.
+Codex will read these files and use codex xhigh + WebFetch for interpretation.
 ================================================================================
         '''
     )
@@ -155,13 +155,13 @@ Claude Code will read these files and use ultrathink + WebFetch for interpretati
     report_dir.mkdir(exist_ok=True)
 
     print("=" * 70)
-    print("PREPARING DATA FOR CLAUDE CODE ULTRATHINK INTERPRETATION")
+    print("PREPARING DATA FOR CODEX XHIGH INTERPRETATION")
     print("=" * 70)
     print()
     print("This script prepares filtered data files.")
-    print("After this completes, Claude Code will:")
+    print("After this completes, Codex will:")
     print("  1. Read each filtered file")
-    print("  2. Use ULTRATHINK for deep biological interpretation")
+    print("  2. Use CODEX_XHIGH for deep biological interpretation")
     print("  3. Use WEBFETCH for literature validation")
     print("  4. Generate professional biologist-level analysis")
     print()
@@ -279,18 +279,18 @@ Claude Code will read these files and use ultrathink + WebFetch for interpretati
     else:
         print("  Warning: No speckle_diffprop directory found")
 
-    # Generate instruction file for Claude Code
+    # Generate instruction file for Codex
     print("\n" + "-" * 60)
-    print("Generating Claude Code instruction file...")
+    print("Generating Codex instruction file...")
     print("-" * 60)
 
-    instruction_file = report_dir / 'CLAUDE_CODE_INSTRUCTIONS.md'
+    instruction_file = report_dir / 'CODEX_INSTRUCTIONS.md'
     with open(instruction_file, 'w') as f:
-        f.write("# Claude Code Ultrathink Interpretation Instructions\n\n")
+        f.write("# Codex XHIGH Interpretation Instructions\n\n")
         f.write("## Overview\n\n")
-        f.write("The filtered data files have been prepared. Claude Code MUST now:\n\n")
+        f.write("The filtered data files have been prepared. Codex MUST now:\n\n")
         f.write("1. Read each comparison's filtered files\n")
-        f.write("2. Use **ultrathink** to analyze and interpret the biological significance\n")
+        f.write("2. Use **codex xhigh** to analyze and interpret the biological significance\n")
         f.write("3. Use **WebFetch** to query relevant literature for validation\n")
         f.write("4. Append the interpretation to the final markdown report\n\n")
 
@@ -344,7 +344,7 @@ Claude Code will read these files and use ultrathink + WebFetch for interpretati
         f.write("Files generated:\n")
         for fname in sorted([f.name for f in files_generated]):
             f.write(f"  - {fname}\n")
-        f.write("\nNEXT STEP: Claude Code reads these files and uses ultrathink/WebFetch\n")
+        f.write("\nNEXT STEP: Codex reads these files and uses codex xhigh/WebFetch\n")
         f.write("to generate professional biological interpretation.\n")
 
     print(f"  -> {summary_file.name}")
@@ -355,8 +355,8 @@ Claude Code will read these files and use ultrathink + WebFetch for interpretati
     print(f"\nFiltered results saved to: {report_dir}")
     print(f"Total files generated: {len(files_generated)}")
     print()
-    print("NEXT STEP: Claude Code will now read these files and use")
-    print("ULTRATHINK + WEBFETCH to generate biological interpretation.")
+    print("NEXT STEP: Codex will now read these files and use")
+    print("CODEX_XHIGH + WEBFETCH to generate biological interpretation.")
     print()
 
 

@@ -1,0 +1,12 @@
+${target}
+${target_full_name}
+${indication}
+${modality_primary}
+${related_diseases}
+${function_summary}
+${canonical_pathway}
+${expression_cells}
+${effector_cells}
+${moa_rationale}
+${combo_opportunities}
+${provided_sources}

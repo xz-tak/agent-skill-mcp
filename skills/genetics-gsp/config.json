@@ -1,0 +1,5 @@
+{
+  "api_url": "http://localhost:8001/api/db/v2026/gsp",
+  "api_timeout": 30,
+  "_comment": "Configure this URL for your environment. Examples: http://localhost:8001/api/db/v2026/gsp (local), https://your-domain.com/api/db/v2026/gsp (production)"
+}

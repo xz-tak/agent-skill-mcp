@@ -42,6 +42,7 @@ suppressPackageStartupMessages({
   library(glue)
   library(presto)
   library(optparse)
+  library(parallel)
   library(EnhancedVolcano)
   library(gridExtra)
   library(plotly)
@@ -80,18 +81,91 @@ option_list <- list(
   make_option(c("--volcano_fdr"), type = "double", default = 0.05,
               help = "FDR cutoff for volcano plot significance [default: %default]"),
   make_option(c("--volcano_log2fc"), type = "double", default = 1,
-              help = "|log2FC| cutoff for volcano plot significance [default: %default]")
+              help = "|log2FC| cutoff for volcano plot significance [default: %default]"),
+
+  # Module selection flags
+  make_option(c("--modules"), type = "character", default = "all",
+              help = "Comma-separated modules to run: deg,fgsea_groups,fgsea_clusters,speckle,markers OR 'all' [default: %default]"),
+  make_option(c("--skip_fgsea_clusters"), action = "store_true", default = FALSE,
+              help = "Skip cluster-level fgsea analysis (faster)"),
+  make_option(c("--deg_only"), action = "store_true", default = FALSE,
+              help = "Run only DEG analysis"),
+  make_option(c("--fgsea_only"), action = "store_true", default = FALSE,
+              help = "Run only fgsea on existing DEG results (requires --deg_input)"),
+  make_option(c("--speckle_only"), action = "store_true", default = FALSE,
+              help = "Run only speckle cell composition analysis"),
+  make_option(c("--deg_input"), type = "character", default = NULL,
+              help = "Path to directory with existing DEG results (for --fgsea_only mode)", metavar = "DIR")
 )
 
 opt_parser <- OptionParser(option_list = option_list)
 opt <- parse_args(opt_parser)
 
-# Validate required arguments
-if (is.null(opt$input)) stop("--input is required")
-if (is.null(opt$condition)) stop("--condition is required")
-if (is.null(opt$sample)) stop("--sample is required")
-if (is.null(opt$celltype)) stop("--celltype is required")
-if (is.null(opt$comparisons)) stop("--comparisons is required")
+# ==============================================================================
+# Module Selection Logic
+# ==============================================================================
+
+#' Parse module selection from CLI arguments
+#' @param opt Parsed options from optparse
+#' @return Character vector of modules to run
+parse_modules <- function(opt) {
+  # Handle convenience flags first (they override --modules)
+  if (opt$deg_only) {
+    return(c("deg"))
+  }
+  if (opt$fgsea_only) {
+    return(c("fgsea_groups"))
+  }
+  if (opt$speckle_only) {
+    return(c("speckle"))
+  }
+
+  # Parse --modules argument
+  if (opt$modules == "all") {
+    modules <- c("deg", "fgsea_groups", "fgsea_clusters", "speckle", "markers")
+  } else {
+    modules <- trimws(strsplit(opt$modules, ",")[[1]])
+  }
+
+  # Apply --skip_fgsea_clusters flag
+
+  if (opt$skip_fgsea_clusters) {
+    modules <- modules[modules != "fgsea_clusters"]
+  }
+
+  return(modules)
+}
+
+# Parse which modules to run
+selected_modules <- parse_modules(opt)
+message("Selected modules: ", paste(selected_modules, collapse = ", "))
+
+# ==============================================================================
+# Argument Validation (mode-dependent)
+# ==============================================================================
+
+# For fgsea_only mode, we need --deg_input instead of full input requirements
+if (opt$fgsea_only) {
+  if (is.null(opt$deg_input)) {
+    stop("--deg_input is required when using --fgsea_only mode")
+  }
+  if (!dir.exists(opt$deg_input)) {
+    stop("DEG input directory does not exist: ", opt$deg_input)
+  }
+  # Check for DEG files in the input directory
+  deg_files <- list.files(opt$deg_input, pattern = "_DE\\.tsv$", full.names = TRUE)
+  if (length(deg_files) == 0) {
+    stop("No DEG result files (*_DE.tsv) found in: ", opt$deg_input)
+  }
+  message("Found ", length(deg_files), " DEG result file(s) for fgsea rerun")
+} else {
+  # Standard validation for other modes
+  if (is.null(opt$input)) stop("--input is required")
+  if (is.null(opt$condition)) stop("--condition is required")
+  if (is.null(opt$sample)) stop("--sample is required")
+  if (is.null(opt$celltype)) stop("--celltype is required")
+  if (is.null(opt$comparisons)) stop("--comparisons is required")
+}
 
 # ==============================================================================
 # Helper Functions
@@ -296,7 +370,7 @@ performGSEAmultilevel <- function(markers, fgsea.set, metric, cluster, n.lines, 
 
   fgsea.res <- fgsea(fgsea.set, rnks, minSize = minS, maxSize = maxS,
                      sampleSize = sSize, gseaParam = gseaParam,
-                     scoreType = scoreType, eps = eps, nproc = 1)
+                     scoreType = scoreType, eps = eps, nproc = 8)
 
   fgsea.res.tidy <- fgsea.res %>%
     as_tibble() %>%
@@ -316,7 +390,7 @@ performGSEAmultilevel <- function(markers, fgsea.set, metric, cluster, n.lines, 
     main.pathways <- fgsea.res %>%
       arrange(desc(NES))
   }
-  main.pathways$leadingEdge <- sapply(main.pathways$leadingEdge, function(x) paste(unlist(x), collapse = ","))
+  main.pathways$leadingEdge <- vapply(main.pathways$leadingEdge, function(x) paste(unlist(x), collapse = ","), character(1), USE.NAMES = FALSE)
 
   top.pathways <- fgsea.res[NES > 0][head(order(-NES), n = 30), pathway]
 
@@ -541,6 +615,207 @@ render_interactive_volcano_plot <- function(current_de_results, group1, group2, 
   })
 }
 
+#' Generate DEG completion report after pseudobulk analysis
+#'
+#' Creates three output files:
+#' 1. deg_completion_report.tsv - per-cluster detailed stats
+#' 2. deg_filtering_stats.tsv - filterByExpr breakdown
+#' 3. deg_summary.txt - human-readable summary
+#'
+#' @param deg_results List of DEG results from custom_pseudoBulkDGE
+#' @param sample_counts Table of sample counts per cluster/condition
+#' @param comparison_name Name of the comparison (e.g., "Healthy_vs_IPF")
+#' @param output_dir Output directory for report files
+#' @param filter_params List with min.count, min.total.count, min.prop values used
+generate_deg_completion_report <- function(deg_results, sample_counts, comparison_name,
+                                           output_dir, filter_params) {
+
+  message("\nGenerating DEG completion report for: ", comparison_name)
+
+  # Initialize data frames for reports
+  completion_report <- data.frame(
+    comparison = character(),
+    cluster = character(),
+    status = character(),
+    n_samples_group1 = integer(),
+    n_samples_group2 = integer(),
+    n_genes_input = integer(),
+    n_genes_tested = integer(),
+    n_genes_filtered = integer(),
+    pct_genes_retained = numeric(),
+    n_deg_total = integer(),
+    n_deg_up = integer(),
+    n_deg_down = integer(),
+    reason_if_excluded = character(),
+    stringsAsFactors = FALSE
+  )
+
+  filtering_stats <- data.frame(
+    comparison = character(),
+    cluster = character(),
+    filter_step = character(),
+    genes_removed = integer(),
+    genes_remaining = integer(),
+    stringsAsFactors = FALSE
+  )
+
+  # Get all clusters (from sample_counts)
+  all_clusters <- rownames(sample_counts)
+  failed_clusters <- S4Vectors::metadata(deg_results)$failed
+  successful_clusters <- setdiff(all_clusters, failed_clusters)
+
+  # Summary counters
+  total_deg_up <- 0
+  total_deg_down <- 0
+  cluster_deg_counts <- list()
+
+  # Process each cluster
+  for (cluster in all_clusters) {
+    cluster_counts <- sample_counts[cluster, ]
+    group1_n <- as.integer(cluster_counts[1])
+    group2_n <- as.integer(cluster_counts[2])
+
+    if (cluster %in% failed_clusters) {
+      # Determine failure reason
+      if (any(cluster_counts == 0)) {
+        reason <- paste0("no_samples_in_", names(cluster_counts)[cluster_counts == 0])
+      } else if (any(cluster_counts < 2)) {
+        reason <- "insufficient_replicates"
+      } else {
+        reason <- "design_matrix_singularity"
+      }
+
+      completion_report <- rbind(completion_report, data.frame(
+        comparison = comparison_name,
+        cluster = cluster,
+        status = "excluded",
+        n_samples_group1 = group1_n,
+        n_samples_group2 = group2_n,
+        n_genes_input = NA,
+        n_genes_tested = NA,
+        n_genes_filtered = NA,
+        pct_genes_retained = NA,
+        n_deg_total = NA,
+        n_deg_up = NA,
+        n_deg_down = NA,
+        reason_if_excluded = reason,
+        stringsAsFactors = FALSE
+      ))
+    } else {
+      # Get results for this cluster
+      cluster_result <- deg_results@listData[[cluster]]
+
+      if (!is.null(cluster_result)) {
+        n_genes_input <- nrow(cluster_result)
+        n_genes_tested <- sum(!is.na(cluster_result$PValue))
+        n_genes_filtered <- n_genes_input - n_genes_tested
+
+        # Count DEGs (FDR < 0.05)
+        sig_genes <- cluster_result[!is.na(cluster_result$FDR) & cluster_result$FDR < 0.05, ]
+        n_deg_total <- nrow(sig_genes)
+        n_deg_up <- sum(sig_genes$logFC > 0, na.rm = TRUE)
+        n_deg_down <- sum(sig_genes$logFC < 0, na.rm = TRUE)
+
+        total_deg_up <- total_deg_up + n_deg_up
+        total_deg_down <- total_deg_down + n_deg_down
+        cluster_deg_counts[[cluster]] <- n_deg_total
+
+        completion_report <- rbind(completion_report, data.frame(
+          comparison = comparison_name,
+          cluster = cluster,
+          status = "completed",
+          n_samples_group1 = group1_n,
+          n_samples_group2 = group2_n,
+          n_genes_input = n_genes_input,
+          n_genes_tested = n_genes_tested,
+          n_genes_filtered = n_genes_filtered,
+          pct_genes_retained = round(n_genes_tested / n_genes_input * 100, 1),
+          n_deg_total = n_deg_total,
+          n_deg_up = n_deg_up,
+          n_deg_down = n_deg_down,
+          reason_if_excluded = "",
+          stringsAsFactors = FALSE
+        ))
+
+        # Add filtering stats entry
+        filtering_stats <- rbind(filtering_stats, data.frame(
+          comparison = comparison_name,
+          cluster = cluster,
+          filter_step = paste0("filterByExpr(min.count=", filter_params$min.count,
+                               ",min.total.count=", filter_params$min.total.count,
+                               ",min.prop=", filter_params$min.prop, ")"),
+          genes_removed = n_genes_filtered,
+          genes_remaining = n_genes_tested,
+          stringsAsFactors = FALSE
+        ))
+      }
+    }
+  }
+
+  # Write completion report
+  report_file <- file.path(output_dir, "deg_completion_report.tsv")
+  if (file.exists(report_file)) {
+    existing_report <- read.table(report_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+    completion_report <- rbind(existing_report, completion_report)
+  }
+  write.table(completion_report, file = report_file, sep = "\t", row.names = FALSE, quote = FALSE)
+  message("  Saved: deg_completion_report.tsv")
+
+  # Write filtering stats
+  filter_file <- file.path(output_dir, "deg_filtering_stats.tsv")
+  if (file.exists(filter_file)) {
+    existing_filter <- read.table(filter_file, header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+    filtering_stats <- rbind(existing_filter, filtering_stats)
+  }
+  write.table(filtering_stats, file = filter_file, sep = "\t", row.names = FALSE, quote = FALSE)
+  message("  Saved: deg_filtering_stats.tsv")
+
+  # Write human-readable summary
+  summary_file <- file.path(output_dir, "deg_summary.txt")
+  summary_lines <- c(
+    "=== DEG Analysis Summary ===",
+    "",
+    paste0("Comparison: ", comparison_name),
+    paste0("  - Clusters analyzed: ", length(successful_clusters), "/", length(all_clusters)),
+    paste0("  - Clusters excluded: ", length(failed_clusters)),
+    paste0("  - Total DEGs (FDR < 0.05): ", total_deg_up + total_deg_down,
+           " (up: ", total_deg_up, ", down: ", total_deg_down, ")")
+  )
+
+  # Find top cluster by DEGs
+  if (length(cluster_deg_counts) > 0) {
+    top_cluster <- names(which.max(unlist(cluster_deg_counts)))
+    summary_lines <- c(summary_lines,
+                       paste0("  - Top cluster by DEGs: ", top_cluster,
+                              " (", cluster_deg_counts[[top_cluster]], " DEGs)"))
+  }
+
+  # Add excluded clusters section
+  if (length(failed_clusters) > 0) {
+    summary_lines <- c(summary_lines, "", "Excluded clusters:")
+    for (fc in failed_clusters) {
+      fc_reason <- completion_report$reason_if_excluded[completion_report$cluster == fc &
+                                                          completion_report$comparison == comparison_name]
+      fc_counts <- sample_counts[fc, ]
+      summary_lines <- c(summary_lines,
+                         paste0("  - ", fc, ": ", fc_reason,
+                                " (", paste(names(fc_counts), "=", fc_counts, collapse = ", "), ")"))
+    }
+  }
+
+  summary_lines <- c(summary_lines, "", paste0("Generated: ", Sys.time()))
+
+  # Append to existing summary or create new
+  if (file.exists(summary_file)) {
+    existing_summary <- readLines(summary_file)
+    summary_lines <- c(existing_summary, "", strrep("-", 60), "", summary_lines)
+  }
+  writeLines(summary_lines, summary_file)
+  message("  Saved: deg_summary.txt")
+
+  return(invisible(completion_report))
+}
+
 #' Custom pseudoBulkDGE implementation with configurable filterByExpr parameters
 #'
 #' This function implements pseudobulk DEG analysis using edgeR directly,
@@ -597,6 +872,17 @@ custom_pseudoBulkDGE <- function(sce, label_col, design_formula, coef,
         failed <- c(failed, label)
         results[[label]] <- NULL
         next
+      }
+
+      # Check for rank deficiency and auto-drop redundant columns
+      design_rank <- qr(design)$rank
+      if (design_rank < ncol(design)) {
+        message("    -> WARNING: Design matrix rank-deficient (rank=", design_rank,
+                ", ncol=", ncol(design), "). Auto-dropping ", ncol(design) - design_rank, " redundant columns.")
+        pivot_cols <- qr(design)$pivot[1:design_rank]
+        dropped_cols <- colnames(design)[setdiff(seq_len(ncol(design)), pivot_cols)]
+        message("    -> Dropped columns: ", paste(dropped_cols, collapse = ", "))
+        design <- design[, pivot_cols, drop = FALSE]
       }
 
       # Check if coefficient exists in design
@@ -707,6 +993,7 @@ output_dir <- opt$output
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
+output_dir <- normalizePath(output_dir)  # Convert to absolute path before setwd
 setwd(output_dir)
 
 # Load custom signatures if provided (uses GENE SYMBOLS)
@@ -717,237 +1004,368 @@ condition.obj <- opt$condition
 celltype.obj <- opt$celltype
 sample.obj <- opt$sample
 batch.obj <- opt$batch
-covariate.obj <- opt$covariate
+
+# Parse covariate(s) - supports comma-separated list for multiple covariates
+covariate_raw <- opt$covariate
+if (!is.null(covariate_raw) && covariate_raw != "NULL" && nchar(trimws(covariate_raw)) > 0) {
+  covariate.obj_list <- trimws(strsplit(covariate_raw, ",")[[1]])
+  covariate.obj_list <- covariate.obj_list[nchar(covariate.obj_list) > 0]
+} else {
+  covariate.obj_list <- character(0)
+}
+# Keep single covariate.obj for backward compatibility (first covariate or NULL)
+covariate.obj <- if (length(covariate.obj_list) > 0) covariate.obj_list[1] else NULL
 
 # Create safe variable names for formulas
 condition <- make.names(condition.obj)
 celltype <- make.names(celltype.obj)
 sample <- make.names(sample.obj)
 batch <- if (!is.null(batch.obj) && batch.obj != "NULL") make.names(batch.obj) else NULL
-covariate <- if (!is.null(covariate.obj) && covariate.obj != "NULL") make.names(covariate.obj) else NULL
+# Create safe names for all covariates
+covariates <- if (length(covariate.obj_list) > 0) make.names(covariate.obj_list) else character(0)
+# Legacy single covariate (backward compat)
+covariate <- if (length(covariates) > 0) covariates[1] else NULL
 
 # Print configuration
 message("\n=== Analysis Configuration ===")
-message("Input file: ", opt$input)
-message("Output directory: ", output_dir)
-message("Condition column: ", condition.obj, " -> ", condition)
-message("Cell type column: ", celltype.obj, " -> ", celltype)
-message("Sample column: ", sample.obj, " -> ", sample)
-message("Batch column: ", ifelse(is.null(batch.obj) || batch.obj == "NULL", "None", batch.obj))
-message("Covariate column: ", ifelse(is.null(covariate.obj) || covariate.obj == "NULL", "None", covariate.obj))
-message("Number of comparisons: ", ncol(group_combinations))
-for (i in 1:ncol(group_combinations)) {
-  message("  Comparison ", i, ": ", group_combinations[1, i], " vs ", group_combinations[2, i])
+message("Selected modules: ", paste(selected_modules, collapse = ", "))
+if (opt$fgsea_only) {
+  message("Mode: fgsea_only (rerunning on existing DEG results)")
+  message("DEG input directory: ", opt$deg_input)
+} else {
+  message("Input file: ", opt$input)
 }
-message("filterByExpr: min.count=", opt$min_count, ", min.total.count=", opt$min_total_count, ", min.prop=", opt$min_prop)
-message("Volcano plot cutoffs: FDR < ", opt$volcano_fdr, ", |log2FC| > ", opt$volcano_log2fc)
+message("Output directory: ", output_dir)
+if (!opt$fgsea_only) {
+  message("Condition column: ", condition.obj, " -> ", condition)
+  message("Cell type column: ", celltype.obj, " -> ", celltype)
+  message("Sample column: ", sample.obj, " -> ", sample)
+  message("Batch column: ", ifelse(is.null(batch.obj) || batch.obj == "NULL", "None", batch.obj))
+  message("Covariate columns: ", ifelse(length(covariate.obj_list) == 0, "None", paste(covariate.obj_list, collapse = ", ")))
+  message("Number of comparisons: ", ncol(group_combinations))
+  for (i in 1:ncol(group_combinations)) {
+    message("  Comparison ", i, ": ", group_combinations[1, i], " vs ", group_combinations[2, i])
+  }
+  message("filterByExpr: min.count=", opt$min_count, ", min.total.count=", opt$min_total_count, ", min.prop=", opt$min_prop)
+  message("Volcano plot cutoffs: FDR < ", opt$volcano_fdr, ", |log2FC| > ", opt$volcano_log2fc)
+}
 message("Custom signatures: ", ifelse(is.null(custom_signatures), "None", paste(names(custom_signatures), collapse = ", ")))
 
 # ==============================================================================
-# Step 1: Load Data
+# Step 1: Load Data (skip if fgsea_only mode)
 # ==============================================================================
 
-message("\n", strrep("-", 60))
-message("STEP 1: Loading input data...")
-message(strrep("-", 60))
+if (!opt$fgsea_only) {
+  message("\n", strrep("-", 60))
+  message("STEP 1: Loading input data...")
+  message(strrep("-", 60))
 
-seurat_obj <- readRDS(opt$input)
-message("Loaded Seurat object with ", ncol(seurat_obj), " cells and ", nrow(seurat_obj), " genes")
+  seurat_obj <- readRDS(opt$input)
+  message("Loaded Seurat object with ", ncol(seurat_obj), " cells and ", nrow(seurat_obj), " genes")
 
-# Convert to SingleCellExperiment
-sce <- as.SingleCellExperiment(seurat_obj, assay = "RNA")
-message("Converted to SingleCellExperiment")
-
-# ==============================================================================
-# Step 2: Pseudobulk Aggregation
-# ==============================================================================
-
-message("\n", strrep("-", 60))
-message("STEP 2: Pseudobulk aggregation...")
-message(strrep("-", 60))
-
-# Build aggregation columns
-agg_cols.obj <- c(condition.obj, celltype.obj, sample.obj)
-if (!is.null(covariate.obj) && covariate.obj != "NULL") agg_cols.obj <- c(agg_cols.obj, covariate.obj)
-
-# Aggregate cell counts
-sce_aggregated <- aggregateAcrossCells(
-  sce,
-  id = colData(sce)[, agg_cols.obj],
-  use.assay.type = "counts"
-)
-message("Aggregated to ", ncol(sce_aggregated), " pseudobulk samples")
-
-# QC check
-table_clusters <- as.data.frame.matrix(table(sce_aggregated[[condition.obj]], sce_aggregated[[celltype.obj]]))
-write.table(table_clusters, "pseudobulk_aggregation_qc.tsv", quote = FALSE, sep = "\t")
-message("Saved aggregation QC table")
+  # Convert to SingleCellExperiment
+  sce <- as.SingleCellExperiment(seurat_obj, assay = "RNA")
+  message("Converted to SingleCellExperiment")
+} else {
+  message("\n", strrep("-", 60))
+  message("STEP 1: SKIPPED (fgsea_only mode - using existing DEG results)")
+  message(strrep("-", 60))
+}
 
 # ==============================================================================
-# Step 3: Pseudobulk Differential Expression
+# Step 2: Pseudobulk Aggregation (needed for DEG and Speckle)
 # ==============================================================================
 
-message("\n", strrep("-", 60))
-message("STEP 3: Pseudobulk differential expression analysis...")
-message(strrep("-", 60))
+# Only run aggregation if DEG or speckle is selected (and not fgsea_only mode)
+needs_aggregation <- !opt$fgsea_only && (("deg" %in% selected_modules) || ("speckle" %in% selected_modules))
 
-# Initialize result containers
+if (needs_aggregation) {
+  message("\n", strrep("-", 60))
+  message("STEP 2: Pseudobulk aggregation...")
+  message(strrep("-", 60))
+
+  # Build aggregation columns (include all covariates for metadata preservation)
+  agg_cols.obj <- c(condition.obj, celltype.obj, sample.obj)
+  if (length(covariate.obj_list) > 0) agg_cols.obj <- c(agg_cols.obj, covariate.obj_list)
+  if (!is.null(batch.obj) && batch.obj != "NULL" && !(batch.obj %in% agg_cols.obj)) {
+    agg_cols.obj <- c(agg_cols.obj, batch.obj)
+  }
+
+  # Aggregate cell counts
+  # BPCells on-disk matrices can't be aggregated directly (not a dgCMatrix).
+  # Materialize per-cluster subsets on-the-fly — each cluster fits in memory
+  # (largest cluster ~435K cells, ~430M nnz, well under 2.1B int32 limit).
+  if (requireNamespace("BPCells", quietly = TRUE) && inherits(counts(sce), "IterableMatrix")) {
+    message("  BPCells detected: aggregating per-cluster to avoid 2.1B nnz limit...")
+    clusters <- unique(colData(sce)[[celltype.obj]])
+    agg_list <- list()
+    for (cl in clusters) {
+      idx <- which(colData(sce)[[celltype.obj]] == cl)
+      message("    ", cl, ": ", length(idx), " cells")
+      sce_sub <- sce[, idx]
+      counts(sce_sub) <- as(counts(sce_sub), "dgCMatrix")
+      agg_list[[cl]] <- aggregateAcrossCells(
+        sce_sub,
+        id = colData(sce_sub)[, agg_cols.obj],
+        use.assay.type = "counts"
+      )
+      rm(sce_sub); gc(verbose = FALSE)
+    }
+    sce_aggregated <- do.call(cbind, agg_list)
+    rm(agg_list); gc(verbose = FALSE)
+  } else {
+    sce_aggregated <- aggregateAcrossCells(
+      sce,
+      id = colData(sce)[, agg_cols.obj],
+      use.assay.type = "counts"
+    )
+  }
+  message("Aggregated to ", ncol(sce_aggregated), " pseudobulk samples")
+
+  # QC check
+  table_clusters <- as.data.frame.matrix(table(sce_aggregated[[condition.obj]], sce_aggregated[[celltype.obj]]))
+  write.table(table_clusters, "pseudobulk_aggregation_qc.tsv", quote = FALSE, sep = "\t")
+  message("Saved aggregation QC table")
+} else {
+  message("\n", strrep("-", 60))
+  message("STEP 2: SKIPPED (not needed for selected modules)")
+  message(strrep("-", 60))
+}
+
+# ==============================================================================
+# Step 3: Pseudobulk Differential Expression (conditional on 'deg' module)
+# ==============================================================================
+
+# Initialize result containers (needed for fgsea even if DEG is skipped)
 de_results_dataframe <- data.frame()
 de_metrics_list <- list()
+result_name <- NULL
 
-# Build design formula
-if (!is.null(covariate) && covariate != "NULL") {
-  formula <- as.formula(paste("~", paste(c(condition, covariate), collapse = " + ")))
+if ("deg" %in% selected_modules && !opt$fgsea_only) {
+  message("\n", strrep("-", 60))
+  message("STEP 3: Pseudobulk differential expression analysis...")
+  message(strrep("-", 60))
+
+  # Build design formula with all covariates
+  all_formula_terms <- c(condition)
+  if (length(covariates) > 0) all_formula_terms <- c(all_formula_terms, covariates)
+  if (!is.null(batch) && !(batch %in% all_formula_terms)) {
+    all_formula_terms <- c(all_formula_terms, batch)
+  }
+  formula <- as.formula(paste("~", paste(all_formula_terms, collapse = " + ")))
+  message("Design formula: ", deparse(formula))
+
+  # Create volcano plots directory
+  if (!dir.exists("volcano_plots")) {
+    dir.create("volcano_plots")
+  }
+
+  # Process each comparison
+  for (i in 1:dim(group_combinations)[2]) {
+    group1 <- group_combinations[1, i]
+    group2 <- group_combinations[2, i]
+
+    message("\n=== Comparison ", i, ": ", group1, " vs ", group2, " ===")
+
+    # Filter to current groups
+    current_sce <- sce_aggregated[, sce_aggregated[[condition.obj]] %in% c(group1, group2)]
+    current_sce[[condition]] <- relevel(factor(current_sce[[condition.obj]]), ref = group2)
+
+    # Pre-analysis diagnostics
+    cluster_labels <- colData(current_sce)[, celltype.obj]
+    condition_values <- current_sce[[condition.obj]]
+    sample_counts <- table(cluster_labels, condition_values)
+
+    message("Sample counts per cluster per condition:")
+    print(sample_counts)
+
+    # Check for problematic clusters
+    clusters_missing_condition <- rownames(sample_counts)[
+      apply(sample_counts, 1, function(x) any(x == 0))
+    ]
+    if (length(clusters_missing_condition) > 0) {
+      message("WARNING: Clusters with ZERO samples in one condition:")
+      for (cl in clusters_missing_condition) {
+        message("  - ", cl, ": ", paste(colnames(sample_counts), "=", sample_counts[cl, ], collapse = ", "))
+      }
+    }
+
+    clusters_low_replicates <- rownames(sample_counts)[
+      apply(sample_counts, 1, function(x) any(x > 0 & x < 2))
+    ]
+    if (length(clusters_low_replicates) > 0) {
+      message("WARNING: Clusters with <2 replicates:")
+      for (cl in clusters_low_replicates) {
+        message("  - ", cl, ": ", paste(colnames(sample_counts), "=", sample_counts[cl, ], collapse = ", "))
+      }
+    }
+
+    # Check batch/covariate confounding
+    if (!is.null(batch.obj) && batch.obj != "NULL") {
+      batch_values <- current_sce[[batch.obj]]
+      confound_table <- table(condition_values, batch_values)
+      batch_confounded <- apply(confound_table, 2, function(x) sum(x > 0) == 1)
+      if (any(batch_confounded)) {
+        message("WARNING: BATCH CONFOUNDING DETECTED!")
+        for (b in names(batch_confounded)[batch_confounded]) {
+          cond_with_batch <- rownames(confound_table)[confound_table[, b] > 0]
+          message("  Batch '", b, "' only in condition '", cond_with_batch, "'")
+        }
+      }
+    }
+
+    # Run custom pseudobulk DEG with relaxed filterByExpr thresholds
+    # The scran::pseudoBulkDGE doesn't expose filterByExpr params, so we implement directly
+    message("Running pseudobulk DEG with custom filterByExpr thresholds...")
+    message("  filterByExpr: min.count=", opt$min_count, ", min.total.count=", opt$min_total_count, ", min.prop=", opt$min_prop)
+
+    current_de_result <- custom_pseudoBulkDGE(
+      current_sce,
+      label_col = celltype.obj,
+      design_formula = formula,
+      coef = paste0(condition, make.names(group1)),
+      min.count = opt$min_count,
+      min.total.count = opt$min_total_count,
+      min.prop = opt$min_prop
+    )
+
+    # Report failed clusters
+    failed_clusters <- metadata(current_de_result)$failed
+    if (length(failed_clusters) > 0) {
+      message("\nFAILED CLUSTERS (", length(failed_clusters), " of ", length(unique(cluster_labels)), "):")
+      for (fc in failed_clusters) {
+        fc_counts <- sample_counts[fc, ]
+        if (any(fc_counts == 0)) {
+          reason <- paste0("Cell type only in condition '", names(fc_counts)[fc_counts > 0], "' (n=", fc_counts[fc_counts > 0], ")")
+        } else if (any(fc_counts < 2)) {
+          reason <- paste0("Insufficient replicates: ", paste(names(fc_counts), "=", fc_counts, collapse = ", "), " (need >=2 each)")
+        } else {
+          reason <- "Design matrix singularity (likely batch/covariate confounding)"
+        }
+        message("  - ", fc, ": ", reason)
+      }
+    }
+
+    # Generate DEG completion report
+    comparison_name <- paste0(group1, "_vs_", group2)
+    filter_params <- list(
+      min.count = opt$min_count,
+      min.total.count = opt$min_total_count,
+      min.prop = opt$min_prop
+    )
+    generate_deg_completion_report(current_de_result, sample_counts, comparison_name,
+                                   output_dir, filter_params)
+
+    # Extract results per cluster
+    de_results_clusters <- current_de_result
+    for (cluster in names(de_results_clusters)) {
+      message("Extracting results for cluster ", cluster)
+
+      current_de_results <- de_results_clusters@listData[[cluster]]
+
+      if (is.null(current_de_results)) {
+        message("  -> NULL result (see FAILED CLUSTERS above)")
+        next
+      }
+
+      # Report filtering statistics
+      n_genes_total <- nrow(current_de_results)
+      n_genes_tested <- sum(!is.na(current_de_results$PValue))
+      n_genes_filtered <- n_genes_total - n_genes_tested
+      if (n_genes_filtered > 0) {
+        message("  -> ", n_genes_tested, "/", n_genes_total, " genes tested (", n_genes_filtered, " filtered)")
+      }
+
+      cluster <- toString(cluster)
+
+      # Store metrics
+      de_metrics_list <- fill_edge_metrics_by_groups(de_metrics_list, cluster, group1, group2, metadata(current_de_results)$y)
+
+      # Modify and store results
+      current_de_results <- modify_DE_results(current_de_results, group1, group2, cluster, "cluster")
+      de_results_dataframe <- update_DE_results_df(de_results_dataframe, current_de_results)
+
+      # Generate volcano plots (static PNG and interactive HTML)
+      render_volcano_plot(current_de_results, group1, group2, "volcano_plots", "DEG", cluster)
+      render_interactive_volcano_plot(current_de_results, group1, group2, "volcano_plots", "DEG", cluster,
+                                      fdr_cutoff = opt$volcano_fdr, log2fc_cutoff = opt$volcano_log2fc)
+    }
+  }
+
+  # Save DE results
+  message("\nSaving DE results...")
+  result_name <- paste0("pseudobulk_", basename(tools::file_path_sans_ext(opt$input)))
+  de_results_dataframe$comparison <- paste0(de_results_dataframe$group1, "_vs_", de_results_dataframe$group2)
+  de_results_out <- de_results_dataframe[, c("gene_name", "logFC", "PValue", "FDR", "group1", "group2", "cluster", "comparison", "clust_res")]
+  write.table(de_results_out, file = paste0(result_name, "_DE.tsv"), sep = "\t", row.names = FALSE, quote = FALSE)
+  message("Saved: ", result_name, "_DE.tsv")
+
+} else if (opt$fgsea_only) {
+  # Load existing DEG results for fgsea rerun
+  message("\n", strrep("-", 60))
+  message("STEP 3: Loading existing DEG results for fgsea rerun...")
+  message(strrep("-", 60))
+
+  deg_files <- list.files(opt$deg_input, pattern = "_DE\\.tsv$", full.names = TRUE)
+  message("Loading DEG results from: ", deg_files[1])
+
+  de_results_dataframe <- read.table(deg_files[1], header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  de_results_dataframe$gene_name <- de_results_dataframe$gene_name
+  result_name <- gsub("_DE\\.tsv$", "", basename(deg_files[1]))
+
+  message("Loaded ", nrow(de_results_dataframe), " DEG entries")
+  message("Comparisons found: ", paste(unique(de_results_dataframe$comparison), collapse = ", "))
+
 } else {
-  formula <- as.formula(paste("~", condition))
-}
+  message("\n", strrep("-", 60))
+  message("STEP 3: SKIPPED (deg module not selected)")
+  message(strrep("-", 60))
 
-# Create volcano plots directory
-if (!dir.exists("volcano_plots")) {
-  dir.create("volcano_plots")
-}
-
-# Process each comparison
-for (i in 1:dim(group_combinations)[2]) {
-  group1 <- group_combinations[1, i]
-  group2 <- group_combinations[2, i]
-
-  message("\n=== Comparison ", i, ": ", group1, " vs ", group2, " ===")
-
-  # Filter to current groups
-  current_sce <- sce_aggregated[, sce_aggregated[[condition.obj]] %in% c(group1, group2)]
-  current_sce[[condition]] <- relevel(factor(current_sce[[condition.obj]]), ref = group1)
-
-  # Pre-analysis diagnostics
-  cluster_labels <- colData(current_sce)[, celltype.obj]
-  condition_values <- current_sce[[condition.obj]]
-  sample_counts <- table(cluster_labels, condition_values)
-
-  message("Sample counts per cluster per condition:")
-  print(sample_counts)
-
-  # Check for problematic clusters
-  clusters_missing_condition <- rownames(sample_counts)[
-    apply(sample_counts, 1, function(x) any(x == 0))
-  ]
-  if (length(clusters_missing_condition) > 0) {
-    message("WARNING: Clusters with ZERO samples in one condition:")
-    for (cl in clusters_missing_condition) {
-      message("  - ", cl, ": ", paste(colnames(sample_counts), "=", sample_counts[cl, ], collapse = ", "))
+  # Auto-load existing DEG results if fgsea modules need them
+  if (("fgsea_groups" %in% selected_modules || "fgsea_clusters" %in% selected_modules) &&
+      nrow(de_results_dataframe) == 0) {
+    deg_search_dir <- if (!is.null(opt$deg_input)) opt$deg_input else output_dir
+    deg_files <- list.files(deg_search_dir, pattern = "_DE\\.tsv$", full.names = TRUE)
+    if (length(deg_files) > 0) {
+      message("  Auto-loading existing DEG results from: ", deg_files[1])
+      de_results_dataframe <- read.table(deg_files[1], header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+      result_name <- gsub("_DE\\.tsv$", "", basename(deg_files[1]))
+      message("  Loaded ", nrow(de_results_dataframe), " DEG entries")
+      message("  Comparisons: ", paste(unique(de_results_dataframe$comparison), collapse = ", "))
     }
-  }
-
-  clusters_low_replicates <- rownames(sample_counts)[
-    apply(sample_counts, 1, function(x) any(x > 0 & x < 2))
-  ]
-  if (length(clusters_low_replicates) > 0) {
-    message("WARNING: Clusters with <2 replicates:")
-    for (cl in clusters_low_replicates) {
-      message("  - ", cl, ": ", paste(colnames(sample_counts), "=", sample_counts[cl, ], collapse = ", "))
-    }
-  }
-
-  # Check batch/covariate confounding
-  if (!is.null(batch.obj) && batch.obj != "NULL") {
-    batch_values <- current_sce[[batch.obj]]
-    confound_table <- table(condition_values, batch_values)
-    batch_confounded <- apply(confound_table, 2, function(x) sum(x > 0) == 1)
-    if (any(batch_confounded)) {
-      message("WARNING: BATCH CONFOUNDING DETECTED!")
-      for (b in names(batch_confounded)[batch_confounded]) {
-        cond_with_batch <- rownames(confound_table)[confound_table[, b] > 0]
-        message("  Batch '", b, "' only in condition '", cond_with_batch, "'")
-      }
-    }
-  }
-
-  # Run custom pseudobulk DEG with relaxed filterByExpr thresholds
-  # The scran::pseudoBulkDGE doesn't expose filterByExpr params, so we implement directly
-  message("Running pseudobulk DEG with custom filterByExpr thresholds...")
-  message("  filterByExpr: min.count=", opt$min_count, ", min.total.count=", opt$min_total_count, ", min.prop=", opt$min_prop)
-
-  current_de_result <- custom_pseudoBulkDGE(
-    current_sce,
-    label_col = celltype.obj,
-    design_formula = formula,
-    coef = paste0(condition, make.names(group2)),
-    min.count = opt$min_count,
-    min.total.count = opt$min_total_count,
-    min.prop = opt$min_prop
-  )
-
-  # Report failed clusters
-  failed_clusters <- metadata(current_de_result)$failed
-  if (length(failed_clusters) > 0) {
-    message("\nFAILED CLUSTERS (", length(failed_clusters), " of ", length(unique(cluster_labels)), "):")
-    for (fc in failed_clusters) {
-      fc_counts <- sample_counts[fc, ]
-      if (any(fc_counts == 0)) {
-        reason <- paste0("Cell type only in condition '", names(fc_counts)[fc_counts > 0], "' (n=", fc_counts[fc_counts > 0], ")")
-      } else if (any(fc_counts < 2)) {
-        reason <- paste0("Insufficient replicates: ", paste(names(fc_counts), "=", fc_counts, collapse = ", "), " (need >=2 each)")
-      } else {
-        reason <- "Design matrix singularity (likely batch/covariate confounding)"
-      }
-      message("  - ", fc, ": ", reason)
-    }
-  }
-
-  # Extract results per cluster
-  de_results_clusters <- current_de_result
-  for (cluster in names(de_results_clusters)) {
-    message("Extracting results for cluster ", cluster)
-
-    current_de_results <- de_results_clusters@listData[[cluster]]
-
-    if (is.null(current_de_results)) {
-      message("  -> NULL result (see FAILED CLUSTERS above)")
-      next
-    }
-
-    # Report filtering statistics
-    n_genes_total <- nrow(current_de_results)
-    n_genes_tested <- sum(!is.na(current_de_results$PValue))
-    n_genes_filtered <- n_genes_total - n_genes_tested
-    if (n_genes_filtered > 0) {
-      message("  -> ", n_genes_tested, "/", n_genes_total, " genes tested (", n_genes_filtered, " filtered)")
-    }
-
-    cluster <- toString(cluster)
-
-    # Store metrics
-    de_metrics_list <- fill_edge_metrics_by_groups(de_metrics_list, cluster, group1, group2, metadata(current_de_results)$y)
-
-    # Modify and store results
-    current_de_results <- modify_DE_results(current_de_results, group1, group2, cluster, "cluster")
-    de_results_dataframe <- update_DE_results_df(de_results_dataframe, current_de_results)
-
-    # Generate volcano plots (static PNG and interactive HTML)
-    render_volcano_plot(current_de_results, group1, group2, "volcano_plots", "DEG", cluster)
-    render_interactive_volcano_plot(current_de_results, group1, group2, "volcano_plots", "DEG", cluster,
-                                    fdr_cutoff = opt$volcano_fdr, log2fc_cutoff = opt$volcano_log2fc)
   }
 }
-
-# Save DE results
-message("\nSaving DE results...")
-result_name <- paste0("pseudobulk_", basename(tools::file_path_sans_ext(opt$input)))
-de_results_dataframe$comparison <- paste0(de_results_dataframe$group2, "vs", de_results_dataframe$group1)
-de_results_out <- de_results_dataframe[, c("gene_name", "logFC", "PValue", "FDR", "group1", "group2", "cluster", "comparison", "clust_res")]
-write.table(de_results_out, file = paste0(result_name, "_DE.tsv"), sep = "\t", row.names = FALSE, quote = FALSE)
-message("Saved: ", result_name, "_DE.tsv")
 
 # ==============================================================================
-# Step 4: Pathway Enrichment Analysis
+# Step 4: Pathway Enrichment Analysis (conditional on 'fgsea_groups' module)
 # ==============================================================================
 
-message("\n", strrep("-", 60))
-message("STEP 4: Pathway enrichment analysis...")
-message(strrep("-", 60))
+if ("fgsea_groups" %in% selected_modules) {
 
-# Create output directories
-if (!dir.exists("fgsea_groups_clusters")) dir.create("fgsea_groups_clusters")
-if (!dir.exists("fgsea_clusters")) dir.create("fgsea_clusters")
+  # Initialize checkpoint for fgsea results (saved to output_dir)
+  fgsea_checkpoint_file <- file.path(output_dir, "fgsea_checkpoint.rds")
+  if (file.exists(fgsea_checkpoint_file)) {
+    fgsea_all_results <- readRDS(fgsea_checkpoint_file)
+    message("Loaded existing checkpoint: ", fgsea_checkpoint_file)
+  } else {
+    fgsea_all_results <- list()
+  }
+
+  # Check if DEG results are available
+  if (nrow(de_results_dataframe) == 0) {
+    message("\n", strrep("-", 60))
+    message("STEP 4: ERROR - No DEG results available for pathway enrichment")
+    message("  Run with 'deg' module first, or use --deg_input to load existing results")
+    message(strrep("-", 60))
+  } else {
+
+    message("\n", strrep("-", 60))
+    message("STEP 4: Pathway enrichment analysis (comparison-level)...")
+    message(strrep("-", 60))
+
+    # Create output directories
+    if (!dir.exists("fgsea_groups_clusters")) dir.create("fgsea_groups_clusters")
+    if (!dir.exists("fgsea_clusters")) dir.create("fgsea_clusters")
 
 # ============================================================================
 # IMPORTANT: Gene Symbol vs Entrez ID handling
@@ -972,56 +1390,35 @@ g.entrezid <- mapIds(entrez.db,
 fgsea.set <- reactomePathways(unique(de_results_entrez$feature))
 de_results_entrez <- calc_adjusted_pval(de_results_entrez)
 
-map_genes <- function(numbers_string, gene_map) {
-  # Handle NA, NULL, or empty strings
-  if (is.null(numbers_string) || is.na(numbers_string) || numbers_string == "" || length(numbers_string) == 0) {
-    return("")
-  }
-  numbers <- unlist(strsplit(as.character(numbers_string), ","))
-  numbers <- numbers[!is.na(numbers) & numbers != ""]
-  if (length(numbers) == 0) return("")
-  genes <- gene_map[numbers]
-  genes <- genes[!is.na(genes)]
-  paste(genes, collapse = ",")
-}
+# Fully vectorized leadingEdge ID conversion (~3 min for 1.47M entries)
+map_genes_parallel <- function(leadingEdge_col, gene_map) {
+  n <- length(leadingEdge_col)
+  message("  Converting ", n, " leadingEdge entries to gene symbols...")
+  message("  Using fully vectorized flatten+lookup+reassemble")
 
-# Vectorized version for better performance on large dataframes
-map_genes_vectorized <- function(leadingEdge_col, gene_map) {
-  message("  Converting ", length(leadingEdge_col), " leadingEdge entries to gene symbols...")
-  # Pre-allocate result vector
-  results <- character(length(leadingEdge_col))
+  splits <- strsplit(leadingEdge_col, ",", fixed = TRUE)
+  lens <- lengths(splits)
+  nonempty <- which(lens > 0)
 
-  # Process in chunks for memory efficiency
-  chunk_size <- 1000
-  n_chunks <- ceiling(length(leadingEdge_col) / chunk_size)
+  result <- rep("", n)
 
-  for (i in seq_len(n_chunks)) {
-    start_idx <- (i - 1) * chunk_size + 1
-    end_idx <- min(i * chunk_size, length(leadingEdge_col))
+  if (length(nonempty) > 0) {
+    flat <- unlist(splits[nonempty], use.names = FALSE)
+    mapped <- gene_map[flat]
+    mapped[is.na(mapped)] <- "\x01"
+    mapped[mapped == ""] <- "\x01"
 
-    for (j in start_idx:end_idx) {
-      val <- leadingEdge_col[j]
-      if (is.null(val) || is.na(val) || val == "" || length(val) == 0) {
-        results[j] <- ""
-      } else {
-        numbers <- unlist(strsplit(as.character(val), ","))
-        numbers <- numbers[!is.na(numbers) & numbers != ""]
-        if (length(numbers) == 0) {
-          results[j] <- ""
-        } else {
-          genes <- gene_map[numbers]
-          genes <- genes[!is.na(genes)]
-          results[j] <- paste(genes, collapse = ",")
-        }
-      }
-    }
+    grp <- rep.int(seq_along(nonempty), lens[nonempty])
+    reassembled <- tapply(mapped, grp, paste, collapse = ",", simplify = TRUE)
 
-    if (i %% 10 == 0 || i == n_chunks) {
-      message("    Processed ", end_idx, "/", length(leadingEdge_col), " entries")
-    }
+    cleaned <- gsub("\x01,|,\x01|\x01", "", unname(reassembled))
+    cleaned <- gsub(",+", ",", cleaned)
+    cleaned <- gsub("^,|,$", "", cleaned)
+    result[nonempty] <- cleaned
   }
 
-  return(results)
+  message("  Conversion complete")
+  return(result)
 }
 
 reactome_file_namings_info <- list(
@@ -1045,17 +1442,26 @@ if (length(de_results_dataframe_list) == 0) {
                                             fgsea.sets = list(fgsea.set),
                                             file_namings_info = reactome_file_namings_info,
                                             analysis_type = result_name)
+  # Checkpoint: Save raw Reactome results (Entrez IDs)
+  fgsea_all_results$groups_reactome <- de.fgsea
+  saveRDS(fgsea_all_results, file = fgsea_checkpoint_file)
+  message("Checkpoint saved: groups_reactome (raw)")
+
   # Convert Entrez IDs to gene symbols in leadingEdge with error handling
   message("Converting Reactome leadingEdge from Entrez IDs to gene symbols...")
   tryCatch({
     gene_map <- setNames(names(g.entrezid), g.entrezid)
-    de.fgsea$leadingEdge <- map_genes_vectorized(de.fgsea$leadingEdge, gene_map)
+    de.fgsea$leadingEdge <- map_genes_parallel(de.fgsea$leadingEdge, gene_map)
   }, error = function(e) {
     message("WARNING: Could not convert leadingEdge to gene symbols: ", e$message)
     message("LeadingEdge will remain as Entrez IDs")
   })
   write.table(de.fgsea, file = paste0(file.name, "_cluster.tsv"), quote = FALSE, sep = '\t', row.names = FALSE)
   message("Saved Reactome enrichment results: ", paste0(file.name, "_cluster.tsv"))
+  # Checkpoint: Update with converted gene symbols
+  fgsea_all_results$groups_reactome <- de.fgsea
+  saveRDS(fgsea_all_results, file = fgsea_checkpoint_file)
+  message("Checkpoint updated: groups_reactome (converted)")
 }
 
 # MSigDB pathway analysis (uses GENE SYMBOLS)
@@ -1078,6 +1484,11 @@ de.fgsea <- performGSEAmultilevel_by_groups(de_df_list = de_df.msigdb_list,
                                             fgsea.sets = fgsea.sets,
                                             file_namings_info = msigdb_file_namings_info,
                                             analysis_type = result_name)
+# Checkpoint: Save MSigDB results (already gene symbols)
+fgsea_all_results$groups_msigdb <- de.fgsea
+saveRDS(fgsea_all_results, file = fgsea_checkpoint_file)
+message("Checkpoint saved: groups_msigdb")
+
 write.table(de.fgsea, file = paste0(file.name, "_cluster.tsv"), quote = FALSE, sep = '\t', row.names = FALSE)
 message("Saved MSigDB enrichment results")
 
@@ -1106,6 +1517,11 @@ if (!is.null(custom_signatures)) {
     file_namings_info = custom_file_namings_info,
     analysis_type = result_name
   )
+  # Checkpoint: Save custom results
+  fgsea_all_results$groups_custom <- de.fgsea.custom
+  saveRDS(fgsea_all_results, file = fgsea_checkpoint_file)
+  message("Checkpoint saved: groups_custom")
+
   write.table(de.fgsea.custom, file = paste0(file.name, "_cluster.tsv"), quote = FALSE, sep = '\t', row.names = FALSE)
 
   # Also save to root output directory for easy access
@@ -1115,13 +1531,32 @@ if (!is.null(custom_signatures)) {
   message("  -> fgsea_custom_signatures.tsv")
 }
 
+  }  # End of DEG results check (nrow > 0)
+} else {  # fgsea_groups module not selected
+  message("\n", strrep("-", 60))
+  message("STEP 4: SKIPPED (fgsea_groups module not selected)")
+  message(strrep("-", 60))
+}
+
 # ==============================================================================
-# Step 5: Cluster-level Pathway Analysis
+# Step 5: Cluster-level Pathway Analysis (conditional on 'fgsea_clusters' module)
 # ==============================================================================
 
-message("\n", strrep("-", 60))
-message("STEP 5: Cluster-level pathway analysis...")
-message(strrep("-", 60))
+if ("fgsea_clusters" %in% selected_modules && !opt$fgsea_only) {
+  message("\n", strrep("-", 60))
+  message("STEP 5: Cluster-level pathway analysis...")
+  message(strrep("-", 60))
+
+  # Initialize checkpoint if not already done in Step 4
+  if (!exists("fgsea_checkpoint_file")) {
+    fgsea_checkpoint_file <- file.path(output_dir, "fgsea_checkpoint.rds")
+    if (file.exists(fgsea_checkpoint_file)) {
+      fgsea_all_results <- readRDS(fgsea_checkpoint_file)
+      message("Loaded existing checkpoint: ", fgsea_checkpoint_file)
+    } else {
+      fgsea_all_results <- list()
+    }
+  }
 
 # Perform Wilcoxon test on clusters
 # Note: presto::wilcoxauc may fail with newer Seurat versions (5.0+)
@@ -1134,8 +1569,14 @@ x.genes <- tryCatch({
   message("  Falling back to Seurat::FindAllMarkers...")
 
   # Fallback using Seurat's FindAllMarkers
-  Idents(seurat_obj) <- seurat_obj@meta.data[[celltype.obj]]
-  markers <- FindAllMarkers(seurat_obj, only.pos = FALSE, min.pct = 0.1,
+  # Filter out NA/NaN cell types before setting Idents
+  valid_cells <- !is.na(seurat_obj@meta.data[[celltype.obj]]) &
+                 seurat_obj@meta.data[[celltype.obj]] != "NaN" &
+                 seurat_obj@meta.data[[celltype.obj]] != ""
+  seurat_obj_filtered <- subset(seurat_obj, cells = colnames(seurat_obj)[valid_cells])
+  Idents(seurat_obj_filtered) <- seurat_obj_filtered@meta.data[[celltype.obj]]
+
+  markers <- FindAllMarkers(seurat_obj_filtered, only.pos = FALSE, min.pct = 0.1,
                             logfc.threshold = 0.1, test.use = "wilcox")
 
   # Convert to presto-like format
@@ -1146,6 +1587,9 @@ x.genes <- tryCatch({
   markers$padj <- markers$p_val_adj
   markers$logFC <- markers$avg_log2FC
 
+  # Filter out any remaining NaN/NA clusters
+  markers <- markers[!is.na(markers$group) & markers$group != "NaN", ]
+
   markers[, c("feature", "group", "auc", "pval", "padj", "logFC")]
 })
 
@@ -1155,6 +1599,7 @@ if (is.null(x.genes) || nrow(x.genes) == 0) {
   x.genes.msigdb <- x.genes  # Keep gene symbols for MSigDB
 
 # Map to Entrez IDs for Reactome (only)
+entrez.db <- org.Hs.eg.db
 g.entrezid <- mapIds(entrez.db,
                      keys = x.genes$feature,
                      keytype = "SYMBOL",
@@ -1175,16 +1620,25 @@ df.vec <- do.call(rbind,
                                                  scoreT = "pos", eps = 1*10^-10, coll.path = FALSE, sample_name = sample_name)
                          }))
 dev.off()
+# Checkpoint: Save raw Reactome cluster results (Entrez IDs)
+fgsea_all_results$clusters_reactome <- df.vec
+saveRDS(fgsea_all_results, file = fgsea_checkpoint_file)
+message("Checkpoint saved: clusters_reactome (raw)")
+
 # Convert Entrez IDs to gene symbols in leadingEdge with error handling
 message("Converting cluster-level Reactome leadingEdge to gene symbols...")
 tryCatch({
   gene_map <- setNames(names(g.entrezid), g.entrezid)
-  df.vec$leadingEdge <- map_genes_vectorized(df.vec$leadingEdge, gene_map)
+  df.vec$leadingEdge <- map_genes_parallel(df.vec$leadingEdge, gene_map)
 }, error = function(e) {
   message("WARNING: Could not convert leadingEdge to gene symbols: ", e$message)
 })
 write.table(df.vec, file = paste0(sample_name, "_cluster.tsv"), quote = FALSE, sep = '\t', row.names = FALSE)
 message("Saved cluster-level Reactome results")
+# Checkpoint: Update with converted gene symbols
+fgsea_all_results$clusters_reactome <- df.vec
+saveRDS(fgsea_all_results, file = fgsea_checkpoint_file)
+message("Checkpoint updated: clusters_reactome (converted)")
 
 # MSigDB C8 cluster-level analysis (uses gene symbols)
 # Note: msigdbr 10.0.0+ uses 'collection' instead of deprecated 'category'
@@ -1201,6 +1655,11 @@ df.vec <- do.call(rbind,
                                                  scoreT = "pos", eps = 1*10^-10, coll.path = FALSE, sample_name = sample_name)
                          }))
 dev.off()
+# Checkpoint: Save MSigDB C8 cluster results
+fgsea_all_results$clusters_msigdbC8 <- df.vec
+saveRDS(fgsea_all_results, file = fgsea_checkpoint_file)
+message("Checkpoint saved: clusters_msigdbC8")
+
 write.table(df.vec, file = paste0(sample_name, "_clusters.tsv"), quote = FALSE, sep = '\t', row.names = FALSE)
 message("Saved cluster-level MSigDB C8 results")
 
@@ -1217,116 +1676,430 @@ if (!is.null(custom_signatures)) {
                                                           scoreT = "pos", eps = 1*10^-10, coll.path = FALSE, sample_name = sample_name)
                                   }))
   dev.off()
+  # Checkpoint: Save custom cluster results
+  fgsea_all_results$clusters_custom <- df.vec.custom
+  saveRDS(fgsea_all_results, file = fgsea_checkpoint_file)
+  message("Checkpoint saved: clusters_custom")
+
   write.table(df.vec.custom, file = paste0(sample_name, "_clusters.tsv"), quote = FALSE, sep = '\t', row.names = FALSE)
   message("Saved cluster-level custom signature results")
 }
 
-}  # End of if (x.genes) check for Step 5
-
-# ==============================================================================
-# Step 6: Cluster Markers
-# ==============================================================================
-
-message("\n", strrep("-", 60))
-message("STEP 6: Cluster marker identification...")
-message(strrep("-", 60))
-
-if (!is.null(batch.obj) && batch.obj != "NULL") {
-  med_markers <- scran::findMarkers(sce, sce[[celltype.obj]], block = sce[[batch.obj]])
+  }  # End of if (x.genes) check for Step 5
 } else {
-  med_markers <- scran::findMarkers(sce, sce[[celltype.obj]])
+  message("\n", strrep("-", 60))
+  message("STEP 5: SKIPPED (fgsea_clusters module not selected or fgsea_only mode)")
+  message(strrep("-", 60))
 }
 
-for (i in 1:length(names(med_markers))) {
-  table <- as.data.frame(med_markers[[i]][, 1:4])
-  table$cluster <- names(med_markers)[i]
-  table <- table %>% rownames_to_column((var <- "feature"))
-  if (i == 1) {
-    old_table <- table
+# ==============================================================================
+# Step 6: Cluster Markers (conditional on 'markers' module)
+# ==============================================================================
+
+if ("markers" %in% selected_modules && !opt$fgsea_only) {
+  message("\n", strrep("-", 60))
+  message("STEP 6: Cluster marker identification...")
+  message(strrep("-", 60))
+
+  # Filter out NA/NaN cell types and check for 2+ unique groups
+  valid_celltypes <- sce[[celltype.obj]][!is.na(sce[[celltype.obj]]) &
+                                          sce[[celltype.obj]] != "NaN" &
+                                          sce[[celltype.obj]] != ""]
+  unique_celltypes <- unique(valid_celltypes)
+
+  if (length(unique_celltypes) < 2) {
+    message("WARNING: Need at least 2 unique cell types for marker identification.")
+    message("  Found ", length(unique_celltypes), " unique cell type(s). Skipping Step 6.")
   } else {
-    new_table <- rbind(old_table, table)
-    old_table <- new_table
-  }
-}
-combined_med_markers <- new_table
-rownames(combined_med_markers) <- NULL
+    # Filter SCE to only include valid cell types
+    valid_cells <- !is.na(sce[[celltype.obj]]) &
+                   sce[[celltype.obj]] != "NaN" &
+                   sce[[celltype.obj]] != ""
+    sce_filtered <- sce[, valid_cells]
 
-p.val <- as.numeric(combined_med_markers[, 3])
-p.adj <- p.adjust(p.val, method = "bonferroni")
-combined_med_markers$p.adjusted <- p.adj
+    # BPCells: use Seurat::FindAllMarkers (supports on-disk matrices natively)
+    # scran::findMarkers requires in-memory dgCMatrix
+    use_seurat_markers <- requireNamespace("BPCells", quietly = TRUE) &&
+                          inherits(counts(sce_filtered), "IterableMatrix")
 
-combined_med_markers <- combined_med_markers %>% dplyr::select(1, 6, 7, 3, 4, 5, 2)
+    if (use_seurat_markers) {
+      message("  BPCells detected: using Seurat::FindAllMarkers instead of scran::findMarkers")
+      Idents(seurat_obj) <- seurat_obj@meta.data[[celltype.obj]]
+      valid_seurat <- !is.na(Idents(seurat_obj)) & Idents(seurat_obj) != "NaN" & Idents(seurat_obj) != ""
+      seurat_filt <- subset(seurat_obj, cells = colnames(seurat_obj)[valid_seurat])
+      sam <- FindAllMarkers(seurat_filt, only.pos = FALSE, min.pct = 0.1,
+                            logfc.threshold = 0.1, test.use = "wilcox")
+      combined_med_markers <- data.frame(
+        feature = sam$gene,
+        cluster = sam$cluster,
+        p.adjusted = sam$p_val_adj,
+        p.value = sam$p_val,
+        summary.logFC = sam$avg_log2FC,
+        Top = 0,
+        self.average = 0,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      if (!is.null(batch.obj) && batch.obj != "NULL") {
+        med_markers <- scran::findMarkers(sce_filtered, sce_filtered[[celltype.obj]], block = sce_filtered[[batch.obj]])
+      } else {
+        med_markers <- scran::findMarkers(sce_filtered, sce_filtered[[celltype.obj]])
+      }
 
-write.table(combined_med_markers,
-            file = "combined_markers_clusters.tsv",
-            sep = "\t", row.names = FALSE, quote = FALSE)
-message("Saved cluster markers")
+      for (i in 1:length(names(med_markers))) {
+        table <- as.data.frame(med_markers[[i]][, 1:4])
+        table$cluster <- names(med_markers)[i]
+        table <- table %>% rownames_to_column((var <- "feature"))
+        if (i == 1) {
+          old_table <- table
+        } else {
+          new_table <- rbind(old_table, table)
+          old_table <- new_table
+        }
+      }
+      combined_med_markers <- new_table
+      rownames(combined_med_markers) <- NULL
 
-# ==============================================================================
-# Step 7: Cell Composition Analysis (Speckle)
-# ==============================================================================
+      p.val <- as.numeric(combined_med_markers[, 3])
+      p.adj <- p.adjust(p.val, method = "bonferroni")
+      combined_med_markers$p.adjusted <- p.adj
 
-message("\n", strrep("-", 60))
-message("STEP 7: Cell composition analysis (Speckle)...")
-message(strrep("-", 60))
+      combined_med_markers <- combined_med_markers %>% dplyr::select(1, 6, 7, 3, 4, 5, 2)
+    }
 
-if (!dir.exists("speckle_diffprop")) dir.create("speckle_diffprop")
-
-# Determine grouping variable
-if (!is.null(batch.obj) && batch.obj != "NULL") {
-  group_var.obj <- batch.obj
+  write.table(combined_med_markers,
+              file = "combined_markers_clusters.tsv",
+              sep = "\t", row.names = FALSE, quote = FALSE)
+  message("Saved cluster markers")
+  }  # End of 2+ unique cell types check
 } else {
+  message("\n", strrep("-", 60))
+  message("STEP 6: SKIPPED (markers module not selected or fgsea_only mode)")
+  message(strrep("-", 60))
+}
+
+# ==============================================================================
+# Step 7: Cell Composition Analysis (Speckle) - conditional on 'speckle' module
+# ==============================================================================
+
+if ("speckle" %in% selected_modules && !opt$fgsea_only) {
+  message("\n", strrep("-", 60))
+  message("STEP 7: Cell composition analysis (Speckle)...")
+  message(strrep("-", 60))
+
+  if (!dir.exists("speckle_diffprop")) dir.create("speckle_diffprop")
+
+  # Always use sample as the grouping variable for cell proportions
+  # Batch will be used as a covariate in the design matrix if provided
   group_var.obj <- sample.obj
-}
 
-# Get transformed proportions
-props <- getTransformedProps(sce[[celltype.obj]], sce[[group_var.obj]], transform = "logit")
+  # Get transformed proportions
+  props <- getTransformedProps(sce[[celltype.obj]], sce[[group_var.obj]], transform = "logit")
 
-# Create metadata dataframe
-metadata_df <- as.data.frame(colData(sce))
+  # Create metadata dataframe
+  metadata_df <- as.data.frame(colData(sce))
 
-meta_cols <- c(condition.obj, group_var.obj)
-if (!is.null(covariate.obj) && covariate.obj != "NULL") meta_cols <- c(meta_cols, covariate.obj)
+  # Include condition, sample, and all covariates/batch
+  meta_cols <- c(condition.obj, group_var.obj)
+  if (!is.null(batch.obj) && batch.obj != "NULL") meta_cols <- c(meta_cols, batch.obj)
+  if (length(covariate.obj_list) > 0) meta_cols <- c(meta_cols, covariate.obj_list)
+  meta_cols <- unique(meta_cols)
 
-subset_df <- metadata_df[, meta_cols, drop = FALSE]
-unique_values_df <- subset_df %>%
-  group_by(!!!syms(group_var.obj)) %>%
-  summarize_all(list(~ unique(.)[1]))
-unique_values_df <- unique_values_df %>% distinct(!!!syms(group_var.obj), .keep_all = TRUE)
+  subset_df <- metadata_df[, meta_cols, drop = FALSE]
+  unique_values_df <- subset_df %>%
+    group_by(!!!syms(group_var.obj)) %>%
+    summarize_all(list(~ unique(.)[1]))
+  unique_values_df <- unique_values_df %>% distinct(!!!syms(group_var.obj), .keep_all = TRUE)
 
-# Apply make.names
-unique_values_df[] <- lapply(unique_values_df, function(col) {
-  if (is.character(col) || is.factor(col)) {
-    return(make.names(col))
-  } else {
-    return(col)
+  # Apply make.names to character/factor columns
+  unique_values_df[] <- lapply(unique_values_df, function(col) {
+    if (is.character(col) || is.factor(col)) {
+      return(make.names(col))
+    } else {
+      return(col)
+    }
+  })
+
+  # Add speckle.condition as a factor column for model.matrix
+  unique_values_df$speckle.condition <- factor(make.names(unique_values_df[[condition.obj]]))
+
+  # Create design matrix - include all covariates
+  covariates_in_formula <- c()
+  if (!is.null(batch.obj) && batch.obj != "NULL") {
+    covariates_in_formula <- c(covariates_in_formula, batch.obj)
   }
-})
+  if (length(covariate.obj_list) > 0) {
+    covariates_in_formula <- c(covariates_in_formula, covariate.obj_list)
+  }
+  covariates_in_formula <- unique(covariates_in_formula)
 
-speckle.condition <- as.character(unique_values_df[[condition.obj]])
+  if (length(covariates_in_formula) == 0) {
+    formula_str <- "~ 0 + speckle.condition"
+  } else {
+    formula_str <- paste("~ 0 + speckle.condition +", paste(covariates_in_formula, collapse = " + "))
+  }
 
-# Create design matrix
-if (is.null(covariate) || covariate == "NULL") {
-  formula_str <- "~ 0 + speckle.condition"
+  design <- model.matrix(as.formula(formula_str), data = unique_values_df)
+
+  # Check for rank deficiency in speckle design matrix and auto-drop
+  speckle_rank <- qr(design)$rank
+  if (speckle_rank < ncol(design)) {
+    message("  WARNING: Speckle design matrix rank-deficient (rank=", speckle_rank,
+            ", ncol=", ncol(design), "). Auto-dropping ", ncol(design) - speckle_rank, " redundant columns.")
+    pivot_cols <- qr(design)$pivot[1:speckle_rank]
+    dropped_cols <- colnames(design)[setdiff(seq_len(ncol(design)), pivot_cols)]
+    message("  Dropped columns: ", paste(dropped_cols, collapse = ", "))
+    design <- design[, pivot_cols, drop = FALSE]
+  }
+
+  # Debug: print design matrix column names
+  message("  Design matrix columns: ", paste(colnames(design), collapse = ", "))
+
+  # Run propeller for each comparison
+  for (i in 1:dim(group_combinations)[2]) {
+    group1 <- group_combinations[1, i]
+    group2 <- group_combinations[2, i]
+
+    message("Running Speckle for: ", group2, " vs ", group1)
+
+    # Construct contrast string using exact column names from design matrix
+    col1 <- paste0("speckle.condition", make.names(group1))
+    col2 <- paste0("speckle.condition", make.names(group2))
+    contrast_str <- paste0(col1, "-", col2)  # group1 vs group2 (group2 is reference)
+    message("  Contrast: ", contrast_str)
+
+    # Wrap in tryCatch to handle empty data or missing cell types
+    tryCatch({
+      mycontr <- makeContrasts(contrasts = contrast_str, levels = design)
+      results <- propeller.ttest(props, design, contrasts = mycontr, robust = TRUE, trend = FALSE, sort = TRUE)
+      write.table(results, file = glue("speckle_diffprop/comb_condition_{group1}_vs_{group2}.tsv"), sep = "\t", row.names = TRUE, col.names = NA, quote = FALSE)
+    }, error = function(e) {
+      message("  WARNING: Speckle failed for ", group2, " vs ", group1, ": ", e$message)
+      message("  Skipping this comparison (likely no cells or empty proportion matrix)")
+    })
+  }
+  message("Saved cell composition results")
+
+  # ==========================================================================
+  # Generate cell proportion barplot with significance annotations
+  # ==========================================================================
+  message("Generating cell proportion barplot...")
+
+  # Get unique conditions from group_combinations
+  all_conditions <- unique(as.vector(group_combinations))
+
+  # Read all speckle result files and extract proportions
+  speckle_files <- list.files("speckle_diffprop", pattern = "^comb_condition_.*\\.tsv$", full.names = TRUE)
+
+  if (length(speckle_files) > 0) {
+    # Initialize storage for proportions and significance
+    prop_list <- list()
+    sig_list <- list()
+
+    for (f in speckle_files) {
+      df <- read.table(f, sep = "\t", header = TRUE, row.names = 1)
+
+      # Extract comparison name from filename
+      fname <- basename(f)
+      # Pattern: comb_condition_Group1_vs_Group2.tsv
+      match <- regmatches(fname, regexec("comb_condition_(.+)_vs_(.+)\\.tsv", fname))[[1]]
+      if (length(match) == 3) {
+        group1 <- match[2]
+        group2 <- match[3]
+
+        # Extract proportions
+        prop_cols <- grep("^PropMean", colnames(df), value = TRUE)
+        for (pc in prop_cols) {
+          # Extract condition name from column name (PropMean.speckle.conditionXXX)
+          cond_match <- regmatches(pc, regexec("PropMean\\.speckle\\.condition(.+)", pc))[[1]]
+          if (length(cond_match) == 2) {
+            cond_name <- cond_match[2]
+            for (ct in rownames(df)) {
+              key <- paste(ct, cond_name, sep = "||")
+              prop_list[[key]] <- df[ct, pc]
+            }
+          }
+        }
+
+        # Extract significance (FDR)
+        for (ct in rownames(df)) {
+          sig_key <- paste(ct, group1, group2, sep = "||")
+          sig_list[[sig_key]] <- df[ct, "FDR"]
+        }
+      }
+    }
+
+    # Build proportion dataframe
+    prop_entries <- names(prop_list)
+    prop_data <- do.call(rbind, lapply(prop_entries, function(x) {
+      parts <- strsplit(x, "\\|\\|")[[1]]
+      data.frame(CellType = parts[1], Condition = parts[2], Proportion = prop_list[[x]], stringsAsFactors = FALSE)
+    }))
+
+    # Remove duplicates (same cell type + condition from different comparison files)
+    prop_data <- prop_data %>% distinct(CellType, Condition, .keep_all = TRUE)
+
+    # Get cell types
+    cell_types <- unique(prop_data$CellType)
+    conditions <- unique(prop_data$Condition)
+
+    # Build significance dataframe
+    sig_entries <- names(sig_list)
+    sig_data <- do.call(rbind, lapply(sig_entries, function(x) {
+      parts <- strsplit(x, "\\|\\|")[[1]]
+      data.frame(CellType = parts[1], Group1 = parts[2], Group2 = parts[3], FDR = sig_list[[x]], stringsAsFactors = FALSE)
+    }))
+
+    # Function to convert FDR to asterisks
+    get_asterisks <- function(fdr) {
+      if (is.na(fdr)) return("")
+      if (fdr < 0.001) return("***")
+      if (fdr < 0.01) return("**")
+      if (fdr < 0.05) return("*")
+      return("")
+    }
+
+    sig_data$Asterisks <- sapply(sig_data$FDR, get_asterisks)
+    sig_data$Significant <- sig_data$FDR < 0.05
+
+    # Calculate total proportion per cell type for ordering
+    total_prop <- prop_data %>%
+      group_by(CellType) %>%
+      summarize(Total = sum(Proportion, na.rm = TRUE)) %>%
+      arrange(desc(Total))
+
+    # Set factor levels for ordering
+    prop_data$CellType <- factor(prop_data$CellType, levels = total_prop$CellType)
+    prop_data$Condition <- factor(prop_data$Condition, levels = conditions)
+
+    # Get max proportion per cell type for bracket positioning
+    max_props <- prop_data %>%
+      group_by(CellType) %>%
+      summarize(MaxProp = max(Proportion, na.rm = TRUE))
+
+    # Filter significant comparisons
+    sig_filtered <- sig_data %>% filter(Significant)
+
+    # Define colors (up to 5 conditions)
+    color_palette <- c("#2ecc71", "#3498db", "#e74c3c", "#9b59b6", "#f39c12")
+    names(color_palette) <- conditions[1:min(length(conditions), 5)]
+
+    # Create base plot
+    p <- ggplot(prop_data, aes(x = CellType, y = Proportion, fill = Condition)) +
+      geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7, alpha = 0.85) +
+      scale_fill_manual(values = color_palette) +
+      theme_bw() +
+      theme(
+        axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 9),
+        axis.title = element_text(size = 12, face = "bold"),
+        plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+        plot.subtitle = element_text(size = 10, hjust = 0.5),
+        legend.position = "top",
+        legend.title = element_text(face = "bold"),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank()
+      ) +
+      labs(
+        x = "Cell Type",
+        y = "Mean Proportion",
+        title = "Cell Type Proportions Across Conditions",
+        subtitle = "* FDR<0.05, ** FDR<0.01, *** FDR<0.001",
+        fill = "Condition"
+      )
+
+    # Add significance brackets if there are significant comparisons
+    if (nrow(sig_filtered) > 0) {
+      cell_type_levels <- levels(prop_data$CellType)
+      n_conditions <- length(conditions)
+
+      # Prepare annotation data
+      annot_list <- list()
+      for (ct in cell_type_levels) {
+        ct_sig <- sig_filtered %>% filter(CellType == ct)
+        if (nrow(ct_sig) == 0) next
+
+        ct_max <- max_props$MaxProp[max_props$CellType == ct]
+        ct_idx <- which(cell_type_levels == ct)
+
+        # Bar positions within group
+        bar_offset <- 0.8 / n_conditions
+        condition_positions <- setNames(
+          ct_idx + ((seq_along(conditions) - 1) - (n_conditions - 1) / 2) * bar_offset,
+          conditions
+        )
+
+        # Sort by span width (narrower first)
+        ct_sig$Span <- sapply(1:nrow(ct_sig), function(i) {
+          g1_idx <- which(conditions == ct_sig$Group1[i])
+          g2_idx <- which(conditions == ct_sig$Group2[i])
+          abs(g1_idx - g2_idx)
+        })
+        ct_sig <- ct_sig %>% arrange(Span)
+
+        base_y <- ct_max * 1.10
+        y_step <- ct_max * 0.55
+
+        for (i in 1:nrow(ct_sig)) {
+          g1 <- ct_sig$Group1[i]
+          g2 <- ct_sig$Group2[i]
+          ast <- ct_sig$Asterisks[i]
+
+          x1 <- condition_positions[g1]
+          x2 <- condition_positions[g2]
+          if (is.na(x1) || is.na(x2)) next
+
+          y_pos <- base_y + (i - 1) * y_step
+
+          annot_list[[length(annot_list) + 1]] <- data.frame(
+            xmin = min(x1, x2),
+            xmax = max(x1, x2),
+            y = y_pos,
+            label = ast,
+            CellType = ct
+          )
+        }
+      }
+
+      if (length(annot_list) > 0) {
+        annot_df <- do.call(rbind, annot_list)
+        bracket_height <- max(prop_data$Proportion, na.rm = TRUE) * 0.015
+
+        p <- p +
+          # Horizontal line
+          geom_segment(data = annot_df,
+                       aes(x = xmin, xend = xmax, y = y + bracket_height, yend = y + bracket_height),
+                       inherit.aes = FALSE, linewidth = 0.4) +
+          # Left vertical
+          geom_segment(data = annot_df,
+                       aes(x = xmin, xend = xmin, y = y, yend = y + bracket_height),
+                       inherit.aes = FALSE, linewidth = 0.4) +
+          # Right vertical
+          geom_segment(data = annot_df,
+                       aes(x = xmax, xend = xmax, y = y, yend = y + bracket_height),
+                       inherit.aes = FALSE, linewidth = 0.4) +
+          # Asterisks (proximal to bracket)
+          geom_text(data = annot_df,
+                    aes(x = (xmin + xmax) / 2, y = y + bracket_height * 1.3, label = label),
+                    inherit.aes = FALSE, size = 3, fontface = "bold", vjust = 0)
+
+        # Extend y-axis to fit annotations
+        y_max <- max(c(prop_data$Proportion, annot_df$y + max(prop_data$Proportion, na.rm = TRUE) * 0.05), na.rm = TRUE)
+        p <- p + coord_cartesian(ylim = c(0, y_max * 1.1))
+      }
+    }
+
+    # Save plot
+    ggsave("speckle_diffprop/speckle_barplot_proportions.png", p, width = 16, height = 9, dpi = 150, bg = "white")
+    message("Saved: speckle_diffprop/speckle_barplot_proportions.png")
+  } else {
+    message("Warning: No speckle result files found for plotting")
+  }
+
 } else {
-  formula_str <- paste("~ 0 + speckle.condition +", paste(covariate, collapse = " + "))
+  message("\n", strrep("-", 60))
+  message("STEP 7: SKIPPED (speckle module not selected or fgsea_only mode)")
+  message(strrep("-", 60))
 }
-
-design <- model.matrix(as.formula(formula_str), data = unique_values_df)
-
-# Run propeller for each comparison
-for (i in 1:dim(group_combinations)[2]) {
-  group1 <- group_combinations[1, i]
-  group2 <- group_combinations[2, i]
-
-  message("Running Speckle for: ", group2, " vs ", group1)
-
-  mycontr <- makeContrasts((glue("speckle.condition{make.names(group2)}-speckle.condition{make.names(group1)}")), levels = design)
-  results <- propeller.ttest(props, design, contrasts = mycontr, robust = TRUE, trend = FALSE, sort = TRUE)
-
-  write.table(results, file = glue("speckle_diffprop/comb_condition_{group2}_vs_{group1}.tsv"), sep = "\t", row.names = TRUE, quote = FALSE)
-}
-message("Saved cell composition results")
 
 # ==============================================================================
 # Pipeline Complete
@@ -1335,16 +2108,39 @@ message("Saved cell composition results")
 message("\n", strrep("=", 80))
 message("PIPELINE COMPLETE")
 message(strrep("=", 80))
+message("\nModules executed: ", paste(selected_modules, collapse = ", "))
 message("\nOutput files generated in: ", output_dir)
-message("  - pseudobulk_*_DE.tsv (differential expression)")
-message("  - fgsea_groups_clusters/*.tsv (pathway enrichment)")
-message("  - fgsea_clusters/*.tsv + *.pdf (cluster-level enrichment)")
-message("  - combined_markers_clusters.tsv (cluster markers)")
-message("  - speckle_diffprop/*.tsv (cell composition)")
-message("  - volcano_plots/*.png (static volcano plots)")
-message("  - volcano_plots/*.html (interactive volcano plots with hover)")
-if (!is.null(custom_signatures)) {
-  message("  - fgsea_custom_signatures.tsv (custom signature enrichment)")
-  message("  - fgsea_clusters/clusters_custom_clusters.tsv (cluster-level custom)")
+
+if ("deg" %in% selected_modules) {
+  message("  - pseudobulk_*_DE.tsv (differential expression)")
+  message("  - deg_completion_report.tsv (per-cluster DEG status)")
+  message("  - deg_filtering_stats.tsv (filterByExpr breakdown)")
+  message("  - deg_summary.txt (human-readable DEG summary)")
+  message("  - volcano_plots/*.png (static volcano plots)")
+  message("  - volcano_plots/*.html (interactive volcano plots with hover)")
 }
+
+if ("fgsea_groups" %in% selected_modules) {
+  message("  - fgsea_groups_clusters/*.tsv (comparison-level pathway enrichment)")
+  if (!is.null(custom_signatures)) {
+    message("  - fgsea_custom_signatures.tsv (custom signature enrichment)")
+  }
+}
+
+if ("fgsea_clusters" %in% selected_modules) {
+  message("  - fgsea_clusters/*.tsv + *.pdf (cluster-level pathway enrichment)")
+  if (!is.null(custom_signatures)) {
+    message("  - fgsea_clusters/clusters_custom_clusters.tsv (cluster-level custom)")
+  }
+}
+
+if ("markers" %in% selected_modules) {
+  message("  - combined_markers_clusters.tsv (cluster markers)")
+}
+
+if ("speckle" %in% selected_modules) {
+  message("  - speckle_diffprop/*.tsv (cell composition)")
+  message("  - speckle_diffprop/speckle_barplot_proportions.png (cell proportion barplot)")
+}
+
 message("\n")

@@ -1,0 +1,440 @@
+{
+    "OT burden": [
+        {
+            "column_name": "diseaseFromSource",
+            "importance": "Essential",
+            "description": "Trait/disease label as reported by the original burden test source.",
+            "data_type": "string"
+        },
+        {
+            "column_name": "releaseVersion",
+            "importance": "Ignore",
+            "description": "Data release identifier or version UUID for this record (if provided).",
+            "data_type": "string"
+        },
+        {
+            "column_name": "directionOnTarget",
+            "importance": "Essential",
+            "description": "Variant consequence class included in the burden set (e.g., LoF).",
+            "data_type": "string"
+        },
+        {
+            "column_name": "directionOnTrait",
+            "importance": "Essential",
+            "description": "Direction of association on the trait (e.g., risk, protect).",
+            "data_type": "string"
+        },
+        {
+            "column_name": "allelicRequirements",
+            "importance": "Ignore",
+            "description": "Allelic requirement(s) assumed for the burden model (e.g., dominant/recessive).",
+            "data_type": "array"
+        },
+        {
+            "column_name": "studyId",
+            "importance": "Ignore",
+            "description": "Identifier of the source study/analysis producing this burden association.",
+            "data_type": "string"
+        },
+        {
+            "column_name": "ancestry",
+            "importance": "Include in visualization",
+            "description": "High-level ancestry label for the analyzed cohort (e.g., EUR).",
+            "data_type": "string"
+        },
+        {
+            "column_name": "ancestryId",
+            "importance": "Ignore",
+            "description": "Ontology identifier for ancestry/population (e.g., HANCESTRO).",
+            "data_type": "string"
+        },
+        {
+            "column_name": "resourceScore",
+            "importance": "Filtering",
+            "description": "Association significance metric used for ranking (typically a p-value or transformed p-value).",
+            "data_type": "float"
+        },
+        {
+            "column_name": "cohortId",
+            "importance": "Include in visualization",
+            "description": "Cohort or biobank identifier contributing samples (e.g., UK Biobank 450k).",
+            "data_type": "string"
+        },
+        {
+            "column_name": "projectId",
+            "importance": "Filtering",
+            "description": "Project or dataset identifier under which the burden analysis was generated.",
+            "data_type": "string"
+        },
+        {
+            "column_name": "statisticalMethod",
+            "importance": "Essential",
+            "description": "Statistical test/method used for the burden association (short name).",
+            "data_type": "string"
+        },
+        {
+            "column_name": "statisticalMethodOverview",
+            "importance": "Include in visualization",
+            "description": "Free-text overview or description of the statistical method.",
+            "data_type": "string"
+        },
+        {
+            "column_name": "studyCases",
+            "importance": "Filtering",
+            "description": "Number of cases (for case-control traits) in the analyzed study/cohort.",
+            "data_type": "integer"
+        },
+        {
+            "column_name": "studyCasesWithQualifyingVariants",
+            "importance": "Ignore",
+            "description": "Number of cases carrying ≥1 qualifying variant in the burden set.",
+            "data_type": "integer"
+        },
+        {
+            "column_name": "studySampleSize",
+            "importance": "Filtering",
+            "description": "Total sample size used in the analysis.",
+            "data_type": "integer"
+        },
+        {
+            "column_name": "oddsRatio",
+            "importance": "Include in visualization",
+            "description": "Odds ratio estimate for case-control traits (may be NA for quantitative traits).",
+            "data_type": "float"
+        },
+        {
+            "column_name": "oddsRatioConfidenceIntervalLower",
+            "importance": "Ignore",
+            "description": "Lower bound of the odds ratio confidence interval.",
+            "data_type": "float"
+        },
+        {
+            "column_name": "oddsRatioConfidenceIntervalUpper",
+            "importance": "Ignore",
+            "description": "Upper bound of the odds ratio confidence interval.",
+            "data_type": "float"
+        },
+        {
+            "column_name": "beta",
+            "importance": "Include in visualization",
+            "description": "Effect size estimate (beta) for quantitative traits (may be NA for case-control traits).",
+            "data_type": "float"
+        },
+        {
+            "column_name": "betaConfidenceIntervalLower",
+            "importance": "Ignore",
+            "description": "Lower bound of the beta confidence interval.",
+            "data_type": "float"
+        },
+        {
+            "column_name": "betaConfidenceIntervalUpper",
+            "importance": "Ignore",
+            "description": "Upper bound of the beta confidence interval.",
+            "data_type": "float"
+        },
+        {
+            "column_name": "literature",
+            "importance": "Ignore",
+            "description": "List of supporting publication identifiers (e.g., PubMed IDs) as a stringified list.",
+            "data_type": "array"
+        },
+        {
+            "column_name": "disease.id",
+            "importance": "Mapping",
+            "description": "Mapped ontology identifier for the trait/disease (e.g., EFO/OT ontology ID).",
+            "data_type": "string"
+        },
+        {
+            "column_name": "disease.name",
+            "importance": "Include in visualization",
+            "description": "Mapped ontology label/name for the trait/disease.",
+            "data_type": "string"
+        },
+        {
+            "column_name": "target.id",
+            "importance": "Mapping",
+            "description": "Ensembl gene identifier for the target gene.",
+            "data_type": "string"
+        },
+        {
+            "column_name": "target.approvedSymbol",
+            "importance": "Essential",
+            "description": "HGNC-approved gene symbol for the target.",
+            "data_type": "string"
+        }
+    ],
+    "OMIM": [
+        {
+            "column_name": "# Chromosome",
+            "importance": "Ignore",
+            "description": "Chromosome of the gene",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Genomic Position Start",
+            "importance": "Ignore",
+            "description": "Starting genomic coordinate of the gene",
+            "data_type": "integer"
+        },
+        {
+            "column_name": "Genomic Position End",
+            "importance": "Ignore",
+            "description": "End genomic coordinate of the gene",
+            "data_type": "integer"
+        },
+        {
+            "column_name": "Cyto Location",
+            "importance": "Ignore",
+            "description": "Cyto Location",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Computed Cyto Location",
+            "importance": "Ignore",
+            "description": "Computed Cyto Location",
+            "data_type": "string"
+        },
+        {
+            "column_name": "MIM Number",
+            "importance": "Mapping",
+            "description": "MIM Number of the gene",
+            "data_type": "integer"
+        },
+        {
+            "column_name": "Gene Symbols",
+            "importance": "Ignore",
+            "description": "Gene Symbols",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Approved Gene Symbol",
+            "importance": "Essential",
+            "description": "Gene Symbol of the gene",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Entrez Gene ID",
+            "importance": "Mapping",
+            "description": "Entrez Gene ID",
+            "data_type": "integer"
+        },
+        {
+            "column_name": "Ensembl Gene ID",
+            "importance": "Mapping",
+            "description": "Ensembl Gene ID",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Phenotype",
+            "importance": "Essential",
+            "description": "Mendelian Phenotype",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Mouse Gene Symbol/ID",
+            "importance": "Ignore",
+            "description": "Mouse Gene Symbol/ID",
+            "data_type": "string"
+        },
+        {
+            "column_name": "MIM Number Phenotype",
+            "importance": "Mapping",
+            "description": "MIM Number Phenotype",
+            "data_type": "integer"
+        },
+        {
+            "column_name": "Direction",
+            "importance": "Essential",
+            "description": "Inferred direction of effects (LoF vs. GoF)",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Direction Source",
+            "importance": "Essential",
+            "description": "How the direction is inferred",
+            "data_type": "string"
+        }
+    ],
+    "GWAS Summary": [
+        {
+            "column_name": "GOI",
+            "importance": "Filtering",
+            "description": "Abbreviation for \"gene-of-interest.\" Boolean indicating that the gene was passed as input to GSP.",
+            "data_type": "boolean"
+        },
+        {
+            "column_name": "Gene ID",
+            "importance": "Mapping",
+            "description": "Ensembl gene ID.",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Gene Symbol",
+            "importance": "Essential",
+            "description": "Gene symbol obtained from Ensembl.",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Final Evidence Strength",
+            "importance": "Essential",
+            "description": "Evidence support score, ['Low', 'Strong', 'Medium', 'Unclear', 'Very low', 'None'].",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Evidence Strength",
+            "importance": "Ignore",
+            "description": "Intermediate evidence support score among all genes in this locus. ",
+            "data_type": "string"
+        },
+        {
+            "column_name": "study-locus ID",
+            "importance": "Ignore",
+            "description": "OpenTargets unique studylocus Id",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Study ID",
+            "importance": "Mapping",
+            "description": "OpenTargets GWAS study ID.",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Trait Reported",
+            "importance": "Essential",
+            "description": "OpenTargets study trait description, synonym is phenotype",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Trait EFO",
+            "importance": "Mapping",
+            "description": "OpenTargets study trait EFO/MONDO term",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Lead Variant ID",
+            "importance": "Ignore",
+            "description": "GWAS lead variant ID in the format of chr_pos_ref_alt",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Lead Variant HGVS",
+            "importance": "Ignore",
+            "description": "GWAS lead variant HGVS ID",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Lead Variant rsID",
+            "importance": "Ignore",
+            "description": "GWAS lead variant rsID",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Lead Variant GWAS beta",
+            "importance": "Ignore",
+            "description": "Effect size of the lead variant estimated from the GWAS",
+            "data_type": "float"
+        },
+        {
+            "column_name": "Lead Variant GWAS standardError",
+            "importance": "Ignore",
+            "description": "Standard error of estimated effect size of the lead variant",
+            "data_type": "float"
+        },
+        {
+            "column_name": "Lead Variant GWAS p-value",
+            "importance": "Ignore",
+            "description": "Lead variant p-value in the GWAS",
+            "data_type": "float"
+        },
+        {
+            "column_name": "Finemapping Method",
+            "importance": "Ignore",
+            "description": "Finemapping Method used to derive credible set",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Finemapping Description",
+            "importance": "Ignore",
+            "description": "Finemapping Method description",
+            "data_type": "string"
+        },
+        {
+            "column_name": "L2G Score",
+            "importance": "Ignore",
+            "description": "L2G score for the gene-study pair in OpenTargets (unavailable for some rows)",
+            "data_type": "float"
+        },
+        {
+            "column_name": "High Impact Variants in Credible Set",
+            "importance": "Include in visualization",
+            "description": "VEP high-impact variants in the credible set (with respect to canonical transcript), if any.",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Missense Variants in Credible Set",
+            "importance": "Include in visualization",
+            "description": "Missense variants in the credible set (with respect to canonical transcript), if any.",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Coloc Relevant Tissue",
+            "importance": "Include in visualization",
+            "description": "A list of tissues (relevant to the GWAS phenotype) in which there is a significant colocalization between the GWAS signal and a molecular QTL. ",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Coloc Tissue Relevance Unknown",
+            "importance": "Ignore",
+            "description": "A list of tissues (uncertain relevance to the GWAS phenotype) in which there is a significant colocalization between the GWAS signal and a molecular QTL. ",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Cred Set QTL Relevant Tissue",
+            "importance": "Include in visualization",
+            "description": "A list of tissues (relevant to the GWAS phenotype) in which the GWAS credible set contains the lead variant of a molecular QTL. ",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Cred Set QTL Tissue Relevance Unknown",
+            "importance": "Ignore",
+            "description": "A list of tissues (uncertain relevance to the GWAS phenotype) in which the GWAS credible set contains the lead variant of a molecular QTL. ",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Cred Set interval Relevant Tissue",
+            "importance": "Ignore",
+            "description": "A list of tissues (relevant to the GWAS phenotype) in which the GWAS credible set overlaps with a regulatory interval. ",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Cred Set interval Tissue Relevance Unknown",
+            "importance": "Ignore",
+            "description": "A list of tissues (uncertain relevance to the GWAS phenotype) in which the GWAS credible set overlaps with a regulatory interval. ",
+            "data_type": "string"
+        },
+        {
+            "column_name": "Distance to Closest Gene",
+            "importance": "Ignore",
+            "description": "Distance to Closest Gene according to OpenTargets",
+            "data_type": "integer"
+        },
+        {
+            "column_name": "Closest Gene",
+            "importance": "Include in visualization",
+            "description": "Boolean indicating whether this gene is the closest gene to the lead variant. Distances are from OpenTargets.",
+            "data_type": "boolean"
+        },
+        {
+            "column_name": "Overlap with OMIM",
+            "importance": "Ignore",
+            "description": "Boolean indicating whether there is Mendelian disease evidence supporting the gene-phenotype association",
+            "data_type": "float"
+        },
+        {
+            "column_name": "Overlap with burden",
+            "importance": "Ignore",
+            "description": "Boolean indicating whether there is gene burden evidence supporting the gene-phenotype association",
+            "data_type": "boolean"
+        }
+    ]
+}
