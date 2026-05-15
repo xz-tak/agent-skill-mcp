@@ -25,9 +25,9 @@
 
 | {entity2_type} | {entity1[0]} | {entity1[1]} | {entity1[2]} |
 |----------------|--------------|--------------|--------------|
-| | cos_sim / pct_rank | cos_sim / pct_rank | cos_sim / pct_rank |
-| **{entity2[0]}** | {score} / {rank}% | {score} / {rank}% | {score} / {rank}% |
-| **{entity2[1]}** | {score} / {rank}% | {score} / {rank}% | {score} / {rank}% |
+| | cos_sim / pct_rank / probability | cos_sim / pct_rank / probability | cos_sim / pct_rank / probability |
+| **{entity2[0]}** | {cos_sim} / {pct_rank} / {probability} | ... | ... |
+| **{entity2[1]}** | {cos_sim} / {pct_rank} / {probability} | ... | ... |
 {... repeat for all entity2}
 
 ---
@@ -134,11 +134,18 @@
 
 ## Summary Table: Signature Association Scores
 
-| Signature | Genes | {entity1[0]} | {entity1[1]} | {entity1[2]} |
-|-----------|-------|--------------|--------------|--------------|
-| | | cos_sim / pct_rank | cos_sim / pct_rank | cos_sim / pct_rank |
-| **[{combo1}]** | {N} | {score} / {rank}% | {score} / {rank}% | {score} / {rank}% |
+| Signature | Genes | {entity1[0]} pct_rank | {entity1[1]} pct_rank | Probability | geo_rank_mean | geo_pct_rank | probability_mean | Delta | Class |
+|-----------|-------|----------------------|----------------------|-------------|---------------|--------------|------------------|-------|-------|
+| **[{combo1}]** | {N} | {pct_rank} | {pct_rank} | {probability} | {geo_rank_mean} | {geo_pct_rank} | {probability_mean} | {delta} | {class} |
 {... for each combo}
+
+**Column definitions:**
+- `Probability`: BioBridge = sigmoid(cos_sim); ULTRA = sigmoid(score)
+- `geo_rank_mean`: Geometric mean of component gene ranks from Part 1 (1 decimal place)
+- `geo_pct_rank`: 1 - (geo_rank_mean - 1) / total_entities (4 decimal places)
+- `probability_mean`: sigmoid(mean(raw scores)) — mean in raw score space first, then sigmoid (4 decimals)
+- `Delta`: combo_pct_rank - geo_pct_rank (signed, 4 decimals)
+- `Class`: SYNERGY (Δ > +0.02), NEAR-ADDITIVE (-0.02 to +0.02), DILUTION (Δ < -0.02)
 
 ---
 

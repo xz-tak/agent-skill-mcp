@@ -31,6 +31,7 @@ Example:
                                        --output data/ultra/scores.json
 """
 
+import numpy as np
 import pandas as pd
 import json
 import argparse
@@ -62,14 +63,28 @@ def extract_disease_scores(
     if len(df_filtered) == 0:
         return {disease: None for disease in disease_list}
 
-    # Recalculate rank within entity type (rank 1 = highest score = best)
-    df_filtered = df_filtered.sort_values('t_pred_score', ascending=False).reset_index(drop=True)
-    df_filtered['disease_rank'] = range(1, len(df_filtered) + 1)
-    total_entities = len(df_filtered)
+    # Handle both old schema (t_pred_score) and new schema (t_pred_logit + t_pred_probability)
+    if 't_pred_probability' in df_filtered.columns:
+        df_filtered['probability'] = df_filtered['t_pred_probability']
+        score_col = 't_pred_logit' if 't_pred_logit' in df_filtered.columns else 't_pred_probability'
+    else:
+        score_col = 't_pred_score'
+        scores = df_filtered[score_col].values
+        df_filtered['probability'] = np.where(
+            scores >= 0,
+            1.0 / (1.0 + np.exp(-scores)),
+            np.exp(scores) / (1.0 + np.exp(scores))
+        )
 
-    # Recalculate pct_rank within entity type
-    # Formula: 1.0 - (rank / total) → rank 1 gets ~1.0, rank N gets ~0.0
-    df_filtered['pct_rank'] = 1.0 - (df_filtered['disease_rank'] / total_entities)
+    total_entities = len(df_filtered)
+    df_filtered['pct_rank'] = df_filtered['probability'].rank(
+        ascending=True, method='first'
+    ) / total_entities
+
+    # disease_rank: 1 = highest probability
+    df_filtered['disease_rank'] = df_filtered['probability'].rank(
+        ascending=False, method='first'
+    ).astype(int)
 
     results = {}
     for disease in disease_list:
@@ -80,7 +95,8 @@ def extract_disease_scores(
             results[disease] = {
                 'entity_id': row['t_pred_label'],
                 'entity_name': row['t_pred_name'],
-                'score': float(row['t_pred_score']),
+                'score': float(row[score_col]),
+                'probability': float(row['probability']),
                 'disease_rank': int(row['disease_rank']),
                 'pct_rank': float(row['pct_rank']),
                 'total_entities': total_entities
@@ -110,9 +126,12 @@ def process_all_genes(
         Dictionary mapping gene name to disease scores
     """
     data_path = Path(data_dir)
-    parquet_files = list(data_path.glob("*_predictions.parquet"))
 
-    if not parquet_files:
+    # Support both flat ({GENE}_predictions.parquet) and nested ({ID}/relation/predictions.parquet)
+    parquet_files = list(data_path.glob("*_predictions.parquet"))
+    nested_files = list(data_path.glob("*/*/predictions.parquet"))
+
+    if not parquet_files and not nested_files:
         print(f"No parquet files found in {data_dir}")
         return {}
 
@@ -121,6 +140,14 @@ def process_all_genes(
         gene_name = pq_file.stem.replace("_predictions", "")
         print(f"Processing {gene_name}...")
         results[gene_name] = extract_disease_scores(str(pq_file), diseases, entity_type)
+
+    for pq_file in sorted(nested_files):
+        # Read to get gene name from h_name column
+        df_peek = pd.read_parquet(pq_file, columns=['h_name'])
+        gene_name = df_peek['h_name'].iloc[0] if len(df_peek) > 0 else pq_file.parent.parent.name
+        if gene_name not in results:
+            print(f"Processing {gene_name} (nested)...")
+            results[gene_name] = extract_disease_scores(str(pq_file), diseases, entity_type)
 
     # Print summary
     print("\n" + "=" * 80)

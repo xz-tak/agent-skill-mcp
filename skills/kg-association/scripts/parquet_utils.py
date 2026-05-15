@@ -294,22 +294,32 @@ def generate_combo_matrix(
 
 def calculate_synergy(
     combo_score: float,
-    individual_scores: List[float],
+    individual_scores: Optional[List[float]] = None,
+    individual_ranks: Optional[List[Optional[float]]] = None,
+    total_entities: Optional[int] = None,
     threshold: float = 0.02
-) -> Dict[str, Union[float, str]]:
+) -> Dict[str, Union[float, str, None]]:
     """
-    Calculate synergy/dilution for a combo vs individual components.
-
-    Args:
-        combo_score: The combo's pct_rank score
-        individual_scores: List of individual component pct_rank scores
-        threshold: Delta threshold for classification (default: 0.02)
-
-    Returns:
-        Dictionary with combo_score, individual_mean, delta, classification
+    Compute synergy/dilution.
+    Preferred: pass individual_ranks + total_entities for geometric mean.
+    Fallback: pass individual_scores for legacy arithmetic mean.
     """
-    individual_mean = sum(individual_scores) / len(individual_scores)
-    delta = combo_score - individual_mean
+    import numpy as np
+
+    if individual_ranks is not None and total_entities is not None:
+        ranks = [r for r in individual_ranks if r is not None]
+        if len(ranks) != len(individual_ranks):
+            return {
+                'combo_score': combo_score, 'baseline': None,
+                'geo_rank_mean': None, 'delta': None, 'classification': 'INCOMPLETE'
+            }
+        geo_rank_mean = np.exp(np.mean(np.log(np.array(ranks, dtype=np.float64))))
+        baseline = 1.0 - (geo_rank_mean - 1) / total_entities
+    else:
+        baseline = sum(individual_scores) / len(individual_scores)
+        geo_rank_mean = None
+
+    delta = combo_score - baseline
 
     if delta > threshold:
         classification = "SYNERGY"
@@ -319,8 +329,9 @@ def calculate_synergy(
         classification = "NEAR-ADDITIVE"
 
     return {
-        'combo_score': combo_score,
-        'individual_mean': round(individual_mean, 6),
+        'combo_score': round(combo_score, 6),
+        'baseline': round(baseline, 6),
+        'geo_rank_mean': round(geo_rank_mean, 2) if geo_rank_mean else None,
         'delta': round(delta, 6),
         'classification': classification
     }

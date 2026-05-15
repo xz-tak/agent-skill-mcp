@@ -1,7 +1,7 @@
 ---
 name: agenticboost-prompt
-version: "2.1.0"
-description: Generate target evaluation documents from template. Fetches Cortellis API data, pathway analysis (KEGG, Reactome, MSigDB), PPI data (STRING, IntAct, BioGRID), and auto-populates placeholders via codex gpt xhigh. Outputs markdown prompt. Requires user to provide target, indication, AND related_diseases.
+version: "3.0.0"
+description: Generate target evaluation documents from template. Fetches Cortellis API data, pathway analysis (KEGG, Reactome, MSigDB), PPI data (STRING, IntAct, BioGRID), and auto-populates placeholders via codex gpt xhigh. Outputs markdown prompt. Generates summary.txt with validated metadata (TA, modality, disease, MoA) from reference catalogs. Requires user to provide target, indication, AND related_diseases.
 allowed-tools: Read, Write, Edit, Bash, Task, AskUserQuestion, Skill
 ---
 
@@ -19,13 +19,14 @@ Generate comprehensive target evaluation documents by combining:
 /agenticboost-prompt
 ```
 
-## Templates Reference
+## Templates & Reference Files
 
-| Template | Description |
-|----------|-------------|
+| File | Description |
+|------|-------------|
 | `templates/prompt_template_v2.md` | Comprehensive 9-section output template with Reasoning Pack |
 | `templates/info_template.txt` | 12 core placeholders schema |
 | `templates/gpt_prompts.json` | GPT prompt definitions for auto-populated fields |
+| `reference/catalog.json` | Canonical catalog for therapeutic areas, modalities, MoA, and diseases |
 
 ## Required vs Auto-Populated Fields
 
@@ -34,7 +35,11 @@ Generate comprehensive target evaluation documents by combining:
 | `target` | User | **Yes** | N/A |
 | `indication` | User | **Yes** | N/A |
 | `related_diseases` | User | **Yes** | N/A |
-| `modality_primary` | GPT | Auto | "{targets} in {indication}" |
+| `therapeutic_area` | summary.txt (catalog) | **Yes** (validated) | Default: GI2; user confirms from catalog |
+| `modality` | summary.txt (catalog) | **Yes** (validated) | Default: SM+BIO for combo, SM for single; user confirms |
+| `disease_association` | summary.txt (catalog) | **Yes** (validated) | Inferred from indication, matched to catalog |
+| `moa` | summary.txt (optional) | Optional | Auto-infer then confirm; multi-valued for combos |
+| `modality_primary` | summary.txt override OR GPT | Partial override | Uses summary.txt value if set, else GPT |
 | `target_full_name` | GPT | Auto | "{targets}" |
 | `function_summary` | GPT | Auto | "{targets} in {indication}" |
 | `canonical_pathway` | GPT | Auto | "{targets} in {indication}" |
@@ -43,6 +48,8 @@ Generate comprehensive target evaluation documents by combining:
 | `moa_rationale` | GPT | Auto | "{targets} in {indication} + Cortellis context" |
 | `combo_opportunities` | GPT | Auto | "{targets} in {indication}" |
 | `provided_sources` | Auto | Auto | Directory listing |
+
+**Partial Override Rule**: Fields populated in `summary.txt` (therapeutic_area, modality, disease_association, moa) take precedence over GPT auto-population for corresponding template placeholders. If a summary.txt field is blank, GPT fills it.
 
 **GPT Prompt Pattern**: All GPT prompts include both `{targets}` and `{indication}` to ensure indication-specific synthesis:
 ```
@@ -53,13 +60,15 @@ Focus on {indication} pathophysiology, disease mechanisms, and relevant cell typ
 ## Overview
 
 This skill automates the target evaluation document generation process:
-1. **Interactive Input**: Prompts for target(s) and indication
-2. **Parallel Data Fetching**: Queries Cortellis API, pathway databases, and PPI databases
-3. **Pathway Analysis**: Identifies shared/unique pathways across targets
-4. **Interaction Analysis** (combo only): Finds shortest paths and bridge proteins
-5. **Combo Effect Classification**: Determines synergistic/complementary/additive effects
-6. **Placeholder Population**: Auto-fills template using codex gpt xhigh
-7. **Document Generation**: Produces final populated **Markdown** file (not DOCX)
+1. **Interactive Input**: Prompts for target(s), indication, and related diseases
+2. **Output Directory**: Creates sanitized output folder
+3. **Summary Metadata (summary.txt)**: Validates therapeutic area, modality, disease association, and MoA against `reference/catalog.json` via two-pass user confirmation
+4. **Parallel Data Fetching**: Queries Cortellis API, pathway databases, and PPI databases
+5. **Pathway Analysis**: Identifies shared/unique pathways across targets
+6. **Interaction Analysis** (combo only): Finds shortest paths and bridge proteins
+7. **Combo Effect Classification**: Determines synergistic/complementary/additive effects
+8. **Placeholder Population**: Auto-fills template using codex gpt xhigh (summary.txt values override where set)
+9. **Document Generation**: Produces final populated **Markdown** file (not DOCX)
 
 ## Orchestration Flow
 
@@ -95,6 +104,85 @@ mkdir -p ./{TARGET1}_{TARGET2}_{indication}/
 ```
 
 Sanitize indication name: replace spaces with `_`, remove special characters.
+
+### Step 2.5: Generate summary.txt (Metadata Validation)
+
+This step validates and generates `summary.txt` in the output directory using a **two-pass confirmation flow** against `reference/catalog.json`.
+
+**Reference catalog location**: `~/.claude/skills/agenticboost-prompt/reference/catalog.json`
+
+#### Phase A: Auto-Infer Defaults
+
+1. **Load catalog**: Read `reference/catalog.json` for therapeutic_areas, modalities, diseases, moa
+2. **Therapeutic Area**: Default to `GI2 - Gastrointestinal and Inflammation`
+3. **Disease Association**: Filter catalog diseases by the selected TA, then fuzzy-match user's `indication` to find the closest `input_name`. If no match, show filtered list for user to pick
+4. **Modality**: Default `SM - Small Molecule` for single targets; default both `SM - Small Molecule` AND `BIO - Biologics` for combo targets
+5. **MoA**: Optional — attempt auto-inference from target/indication context. For combos, can be multi-valued (e.g., `BsAb - Bispecific Antibody, Inh - Inhibitor`)
+
+#### Phase B: Two-Pass User Validation
+
+**Pass 1 — Field Table Review**: Present all inferred values as a structured table via `AskUserQuestion`:
+
+```
+| Field                | Inferred Value                              | Source    |
+|----------------------|---------------------------------------------|-----------|
+| Target               | CDKN2D, PCOLCE                              | User      |
+| Therapeutic Area     | GI2 - Gastrointestinal and Inflammation     | Default   |
+| Disease Association  | IBD - Inflammatory Bowel Disease             | Catalog   |
+| Modality             | SM - Small Molecule, BIO - Biologics         | Default   |
+| MoA                  | BsAb - Bispecific Antibody                   | Inferred  |
+```
+
+Ask: "Review the inferred metadata. Which fields need changes? (Select all that apply, or confirm all are correct)"
+
+**Pass 2 — Re-ask Flagged Fields Only**: For each field the user flags:
+- Show available catalog options filtered by context (e.g., diseases filtered by TA)
+- Allow user to pick from catalog OR type a custom value
+- If custom value is **out-of-schema**: warn with closest catalog suggestion, then require explicit confirmation before accepting
+
+#### Out-of-Schema Handling
+
+When a user provides a value not in `catalog.json`:
+1. Warn: `"⚠ '{value}' is not in the current catalog. Closest match: '{closest_match}'."`
+2. Ask via `AskUserQuestion`: accept the suggestion, keep custom value, or enter a different value
+3. If user confirms custom value, accept it (no `[custom]` flag needed — user has explicitly confirmed)
+
+#### Writing summary.txt
+
+After validation, write the file to the output directory:
+
+**Single target format**:
+```
+## CARD9
+
+- Therapeutic area: GI2 - Gastrointestinal and Inflammation (DDU)
+
+- Disease association: IBD - Inflammatory Bowel Disease
+
+- Modality: SM - Small Molecule
+
+- MoA:
+```
+
+**Combo target format** (join target names with `_`):
+```
+## CDKN2D_PCOLCE
+
+- Therapeutic area: GI2 - Gastrointestinal and Inflammation (DDU)
+
+- Disease association: IBD - Inflammatory Bowel Disease
+
+- Modality: BIO - Biologics
+
+- MoA: BsAb - Bispecific Antibody
+```
+
+**Multi-valued MoA** (comma-separated for combos):
+```
+- MoA: BsAb - Bispecific Antibody, Inh - Inhibitor
+```
+
+**Do NOT proceed to Step 3 until summary.txt is written and user has confirmed all fields.**
 
 ### Step 3: Run Data Queries
 
@@ -298,19 +386,20 @@ python ~/.claude/skills/agenticboost-prompt/scripts/target_evaluation_gen.py \
 
 ```
 {TARGET1}_{TARGET2}_{indication}/
-├── {TARGET1}_cortellis_data.json      # Cortellis API response
-├── {TARGET1}_cortellis_data.xlsx      # Excel workbook
-├── {TARGET2}_cortellis_data.json      # (if combo)
+├── summary.txt                             # Validated metadata (TA, modality, disease, MoA)
+├── {TARGET1}_cortellis_data.json           # Cortellis API response
+├── {TARGET1}_cortellis_data.xlsx           # Excel workbook
+├── {TARGET2}_cortellis_data.json           # (if combo)
 ├── {TARGET2}_cortellis_data.xlsx
-├── pathways_long.csv                   # All pathways (long format)
-├── pathways_wide.csv                   # Pathways per gene
-├── pathways_summary.csv                # Pathway stats
-├── pathways_pathway_centric.csv        # Pathways with gene counts
+├── pathways_long.csv                       # All pathways (long format)
+├── pathways_wide.csv                       # Pathways per gene
+├── pathways_summary.csv                    # Pathway stats
+├── pathways_pathway_centric.csv            # Pathways with gene counts
 ├── {TARGET1}-{TARGET2}_string_paths.json   # STRING PPI paths (combo only)
 ├── {TARGET1}-{TARGET2}_intact_paths.json   # IntAct PPI paths
 ├── {TARGET1}-{TARGET2}_biogrid_paths.json  # BioGRID PPI paths
-├── combo_analysis.json                 # Enhanced combo analysis (combo only)
-├── {TARGET1}_{TARGET2}_info.txt        # All placeholder values
+├── combo_analysis.json                     # Enhanced combo analysis (combo only)
+├── {TARGET1}_{TARGET2}_info.txt            # All placeholder values
 └── {TARGET1}_{TARGET2}_({indication})_Target_Evaluation_Prompt.md  # Output
 ```
 
@@ -356,6 +445,17 @@ Output: TYK2_JAK1_Crohns_disease/TYK2_JAK1_(Crohns_disease)_Target_Evaluation_Pr
 ```
 
 ## Changelog
+
+### v3.0.0 (2026-04-29)
+- **New**: Added Step 2.5 — `summary.txt` generation with two-pass metadata validation
+- **New**: Created `reference/catalog.json` with canonical schemas for therapeutic areas, modalities, MoA, and diseases
+- **New**: Therapeutic area, modality, disease association matched against catalog; out-of-schema values supported with warning + confirmation
+- **New**: MoA field is optional, auto-inferred then confirmed; supports multi-valued entries for combos (comma-separated)
+- **New**: Partial override rule — summary.txt values override GPT auto-population for modality, disease, TA fields
+- **New**: Disease catalog includes TA auto-assignment (GI2, ONC, NS) with disease filtering by selected TA
+- **New**: MoA catalog with 21 active entries across 6 groups (Receptor Pharmacology, Multi-specific Antibody, Antibody Conjugate, TPD, Nucleic Acid, Standalone)
+- **Breaking**: Workflow now gates data queries behind summary.txt confirmation (Step 2.5 must complete before Step 3)
+- **Removed**: Deprecated MoA entry "Bispecific - Bi" (replaced by "BsAb - Bispecific Antibody")
 
 ### v2.1.0 (2026-03-16)
 - **Breaking**: `--related-diseases` is now a **required** CLI argument (not auto-populated from Cortellis)

@@ -138,25 +138,41 @@ Best for:
 
 ## Calculating Synergy/Dilution
 
-### From Part 1 Individual Scores
+### From Part 1 Individual Ranks
 
-For each entity in combo, extract individual scores from Part 1:
+For each entity in combo, extract individual RAW RANKS from Part 1 (1-indexed, 1=best):
+```python
+individual_ranks = [rank(GENE_A, DISEASE), rank(GENE_B, DISEASE)]
+# Log-space geometric mean (numerically stable for large ranks × many genes):
+geo_rank_mean = exp(mean(log(individual_ranks)))
+# Convert to pct_rank space:
+geo_pct_rank = 1.0 - (geo_rank_mean - 1) / total_entities
 ```
-individual_scores = [score(GENE_A, DISEASE), score(GENE_B, DISEASE)]
-arithmetic_mean = sum(individual_scores) / len(individual_scores)
-```
+
+For N-ary combos, this generalizes naturally: `(rank_1 × ... × rank_N)^(1/N)`.
+
+If any gene is missing from results, flag as `classification = INCOMPLETE` (don't guess or penalize).
 
 ### From Part 2 Combo Scores
 
 Get the combo/signature score:
 ```
-combo_score = signature query result
+combo_pct_rank = pct_rank from signature query result
 ```
 
 ### Delta Calculation
 
 ```
-delta = combo_score - arithmetic_mean
+delta = combo_pct_rank - geo_pct_rank
+```
+
+### Probability Mean (per-MCP only)
+
+```python
+# Mean in raw score space first, THEN transform:
+probability_mean = sigmoid(mean(logit_A, logit_B, ...))  # ULTRA/UltraQuery
+probability_mean = sigmoid(mean(cos_sim_A, cos_sim_B, ...))  # BioBridge
+# Never combine probabilities across different MCPs (different raw score scales)
 ```
 
 ### Classification
@@ -164,8 +180,11 @@ delta = combo_score - arithmetic_mean
 | Delta | Classification | Interpretation |
 |-------|----------------|----------------|
 | > +0.02 | **SYNERGY** | Combo enhances association beyond components |
-| -0.02 to +0.02 | **NEAR-ADDITIVE** | Combo ≈ average of components |
+| -0.02 to +0.02 | **NEAR-ADDITIVE** | Combo ≈ geometric mean of components |
 | < -0.02 | **DILUTION** | Combo weakens association vs components |
+| N/A | **INCOMPLETE** | One or more genes missing from results |
+
+Note: PrimeKG combo scoring cannot detect synergy (always equals mean by construction).
 
 ### Severity Scale
 
