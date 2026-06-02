@@ -1,5 +1,5 @@
 ---
-name: omicsoft-deg-analysis
+name: omicsoft-analysis
 description: Analyze pre-computed differential gene expression statistics from Omicsoft h5ad files to investigate target gene expression patterns and signature enrichment. This skill should be used when users request to analyze bulk DEG data (log2fc, padj) from h5ad files, filter for specific diseases or studies, examine target genes or pathways with custom signatures, perform GSEA enrichment analysis with enhanced summaries including leading edge annotation, and generate interactive visualizations.
 ---
 

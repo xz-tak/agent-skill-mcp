@@ -67,7 +67,7 @@ Claude Code skills provide specialized workflows and domain knowledge for specif
 |-------|-------------|
 | [DESeq2 RNA-seq](skills/deseq2-rna/) | Interactive bulk RNA-seq differential expression analysis with multi-factor designs, GSEA pathway enrichment, and interactive visualizations |
 | [AnnData-Seurat Conversion](skills/anndata-seurat-conversion/) | Bidirectional h5ad/RDS conversion preserving expression data, metadata, reductions, and layers |
-| [Omicsoft DEG Analysis](skills/omicsoft-deg-analysis/) | Query pre-computed differential expression from Omicsoft h5ad files or TileDB-SOMA on S3 |
+| [Omicsoft Analysis](skills/omicsoft-analysis/) | Analyze pre-computed differential expression, expression data, and enrichment from Omicsoft h5ad files or TileDB-SOMA on S3 |
 
 ### Pathway & Network Analysis
 

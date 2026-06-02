@@ -293,7 +293,7 @@ QUICKSTART.md                  This file
 ## Questions?
 
 - **Schema structure:** See `README_schema.md`
-- **deg_analysis usage:** See skill documentation in `/home/sagemaker-user/.claude/skills/omicsoft-deg-analysis/SKILL.md`
+- **deg_analysis usage:** See skill documentation in `/home/sagemaker-user/.claude/skills/omicsoft-analysis/SKILL.md`
 - **AnnData format:** See `references/anndata_schema.md`
 
 ---
