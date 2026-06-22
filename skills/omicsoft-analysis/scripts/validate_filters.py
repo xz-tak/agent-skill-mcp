@@ -17,10 +17,27 @@ import scanpy as sc
 sys.path.insert(0, os.path.dirname(__file__))
 from deg_analysis import load_h5ad, is_s3_uri
 
+# Check if SOMA support is available
+try:
+    from soma_loader import (
+        SOMA_AVAILABLE,
+        is_soma_uri,
+        try_soma_open,
+        detect_soma_structure,
+        get_soma_context,
+        get_soma_schema_info,
+        prefetch_obs_values,
+        translate_substring_filter,
+        build_soma_filter,
+        SOMAStructureType
+    )
+except ImportError:
+    SOMA_AVAILABLE = False
 
-def validate_filters_stepwise(args):
+
+def validate_filters_soma(args):
     """
-    Validate filters step-by-step, showing intermediate results
+    Validate filters for SOMA experiment using server-side queries.
 
     Parameters
     ----------
@@ -32,6 +49,224 @@ def validate_filters_stepwise(args):
     dict
         Validation results with filter status and suggestions
     """
+    import tiledbsoma
+
+    print("=" * 80)
+    print("FILTER VALIDATION - SOMA Experiment (Step-by-Step)")
+    print("=" * 80)
+
+    validation_results = {
+        'total_obs': 0,
+        'filters_applied': [],
+        'final_obs': None,
+        'success': True,
+        'failed_filter': None,
+        'suggestions': [],
+        'data_source': 'soma'
+    }
+
+    # Get SOMA context (use AWS_DEFAULT_REGION env var or default to us-east-1)
+    region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    context = get_soma_context(region=region)
+
+    print(f"\n[STEP 0] Opening SOMA experiment...")
+    print(f"  URI: {args.file}")
+
+    try:
+        # Get schema info
+        schema_info = get_soma_schema_info(args.file, context)
+        structure_type = schema_info['structure_type']
+
+        print(f"  Structure type: {structure_type}")
+        print(f"  Total observations: {schema_info['n_obs']:,}")
+
+        validation_results['total_obs'] = schema_info['n_obs']
+        validation_results['structure_type'] = structure_type
+
+        if 'RNA' in schema_info['measurements']:
+            print(f"  Total variables: {schema_info['measurements']['RNA']['n_vars']:,}")
+            print(f"  X layers: {schema_info['measurements']['RNA']['x_layers']}")
+
+    except Exception as e:
+        print(f"  Error opening SOMA: {e}")
+        validation_results['success'] = False
+        validation_results['suggestions'].append(f"Failed to open SOMA experiment: {e}")
+        return validation_results
+
+    # Define filter columns and their match types
+    filter_specs = [
+        ('diseases', 'disease', 'substring', False),
+        ('exclude_diseases', 'disease', 'substring', True),
+        ('tissues', 'tissue', 'substring', False),
+        ('studies', 'study', 'exact', False),
+        ('comparison_category', 'comparison_category', 'exact', False),
+        ('case_treatment', 'case_treatment', 'exact', False),
+        ('comparison', 'comparison', 'substring', False),
+    ]
+
+    # Pre-fetch all needed columns
+    needed_columns = ['disease', 'tissue', 'study', 'comparison_category', 'case_treatment', 'comparison']
+    print(f"\n[STEP 1] Pre-fetching unique values from SOMA obs columns...")
+
+    with tiledbsoma.open(args.file, mode="r", context=context) as exp:
+        unique_values = prefetch_obs_values(exp, needed_columns)
+
+    for col, values in unique_values.items():
+        print(f"  {col}: {len(values)} unique values")
+
+    # Build cumulative filter and validate step by step
+    filter_config = {}
+    step_num = 2
+
+    for arg_name, col_name, match_type, is_negated in filter_specs:
+        filter_value = getattr(args, arg_name.replace('-', '_'), None)
+
+        if not filter_value:
+            continue
+
+        print(f"\n[STEP {step_num}] {arg_name.replace('_', ' ').title()} Filter")
+        print(f"  Query: {filter_value}")
+        print(f"  Column: {col_name}")
+        print(f"  Match type: {match_type}")
+
+        search_terms = [v.strip() for v in filter_value.split(',') if v.strip()]
+        available = unique_values.get(col_name, [])
+
+        if match_type == 'substring':
+            # Substring matching
+            matched_values = translate_substring_filter(available, search_terms, case_insensitive=True)
+            print(f"  Search patterns: {search_terms}")
+        else:
+            # Exact matching
+            matched_values = [v for v in search_terms if v in available]
+            print(f"  Exact values: {search_terms}")
+
+        if matched_values:
+            print(f"\n  Found {len(matched_values)} matching value(s):")
+            for val in sorted(set(matched_values))[:15]:
+                print(f"    - {val}")
+            if len(set(matched_values)) > 15:
+                print(f"    ... and {len(set(matched_values)) - 15} more")
+
+            # Handle exclude vs include for disease
+            if arg_name == 'exclude_diseases':
+                # Remove excluded from included
+                if 'disease' in filter_config:
+                    existing = set(filter_config['disease']['values'])
+                    filter_config['disease']['values'] = list(existing - set(matched_values))
+                    print(f"\n  Excluding {len(matched_values)} disease(s) from filter")
+                else:
+                    print(f"\n  No include disease filter to exclude from - creating negated filter")
+                    filter_config[f'{col_name}_exclude'] = {'values': matched_values, 'negate': True}
+            else:
+                filter_config[col_name] = {'values': matched_values, 'negate': is_negated}
+
+            validation_results['filters_applied'].append({
+                'step': step_num,
+                'filter': arg_name,
+                'column': col_name,
+                'query': filter_value,
+                'matches': len(set(matched_values)),
+                'status': 'success'
+            })
+        else:
+            print(f"\n  No matching values found!")
+            print(f"  Available {col_name} values (first 20):")
+            for val in sorted(available)[:20]:
+                print(f"    - {val}")
+
+            validation_results['success'] = False
+            validation_results['failed_filter'] = arg_name
+            validation_results['suggestions'].append(
+                f"No {col_name} values match '{filter_value}'. "
+                f"Check available values in schema explorer."
+            )
+            return validation_results
+
+        step_num += 1
+
+    # Build and test the final filter
+    print(f"\n[STEP {step_num}] Testing complete filter...")
+
+    soma_filter = build_soma_filter(filter_config)
+
+    if soma_filter:
+        print(f"  SOMA filter: {soma_filter[:200]}..." if len(soma_filter) > 200 else f"  SOMA filter: {soma_filter}")
+
+        # Count matching observations
+        try:
+            with tiledbsoma.open(args.file, mode="r", context=context) as exp:
+                query = exp.axis_query(
+                    measurement_name="RNA",
+                    obs_query=tiledbsoma.AxisQuery(value_filter=soma_filter)
+                )
+                # Get obs to count
+                obs_df = query.obs().concat().to_pandas()
+                final_obs = len(obs_df)
+                query.close()
+
+            print(f"\n  Final observation count: {final_obs:,}")
+            validation_results['final_obs'] = final_obs
+
+            if final_obs == 0:
+                validation_results['success'] = False
+                validation_results['failed_filter'] = 'combined_filter'
+                validation_results['suggestions'].append(
+                    "Combined filters resulted in 0 observations. "
+                    "Try relaxing some filter constraints."
+                )
+        except Exception as e:
+            print(f"  Error testing filter: {e}")
+            validation_results['success'] = False
+            validation_results['suggestions'].append(f"Filter test failed: {e}")
+    else:
+        print("  No filters to apply - all data will be loaded")
+        validation_results['final_obs'] = validation_results['total_obs']
+
+    # Final summary
+    if validation_results['success']:
+        print(f"\n" + "=" * 80)
+        print(f"FILTER VALIDATION SUMMARY - SOMA")
+        print(f"=" * 80)
+        print(f"\n All filters validated successfully!")
+        print(f"\n  Initial observations: {validation_results['total_obs']:,}")
+        print(f"  Final observations: {validation_results['final_obs']:,}")
+
+        if validation_results['total_obs'] > 0:
+            reduction = (validation_results['total_obs'] - validation_results['final_obs']) / validation_results['total_obs'] * 100
+            print(f"  Reduction: {reduction:.1f}%")
+
+        print(f"\n  Filters applied: {len(validation_results['filters_applied'])}")
+        for filter_info in validation_results['filters_applied']:
+            print(f"    {filter_info['step']}. {filter_info['filter']}: {filter_info['matches']} matches")
+
+        print(f"\n Ready to proceed with SOMA analysis")
+
+    return validation_results
+
+
+def validate_filters_stepwise(args):
+    """
+    Validate filters step-by-step, showing intermediate results.
+
+    Auto-detects SOMA vs h5ad and dispatches to appropriate validator.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Command line arguments with filter parameters
+
+    Returns
+    -------
+    dict
+        Validation results with filter status and suggestions
+    """
+    # Check if this is a SOMA URI
+    if SOMA_AVAILABLE and is_s3_uri(args.file) and is_soma_uri(args.file):
+        print("Detected SOMA URI - using SOMA validation")
+        return validate_filters_soma(args)
+
+    # Standard h5ad validation
     print("=" * 80)
     print("FILTER VALIDATION - Step-by-Step Query")
     print("=" * 80)
@@ -492,8 +727,9 @@ def validate_filters_stepwise(args):
         cmd_parts.append(f'--targets "{args.targets}"')
     cmd_parts.append(f"--lfc-threshold {args.lfc_threshold}")
     cmd_parts.append(f"--padj-threshold {args.padj_threshold}")
-    if args.run_gsea:
-        cmd_parts.append("--run-gsea")
+    if not args.run_gsea:
+        cmd_parts.append("--no-gsea")
+    # GSEA is ON by default, so no need to add --run-gsea
 
     print(f"\n{' '.join(cmd_parts)}")
 
@@ -523,9 +759,14 @@ def main():
     parser.add_argument('--padj-threshold', type=float, default=0.05, help='Adjusted p-value threshold')
 
     # Analysis options
-    parser.add_argument('--run-gsea', action='store_true', help='Run GSEA analysis')
+    parser.add_argument('--run-gsea', action='store_true', default=True, help='Run GSEA analysis (ON by default)')
+    parser.add_argument('--no-gsea', action='store_true', help='Disable GSEA analysis')
 
     args = parser.parse_args()
+
+    # Handle GSEA flag logic
+    if args.no_gsea:
+        args.run_gsea = False
 
     validation_results = validate_filters_stepwise(args)
 

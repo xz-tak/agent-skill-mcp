@@ -18,12 +18,23 @@ def generate_html(json_data):
     # Escape and embed the JSON data
     json_str = json.dumps(json_data).replace('</script>', '<\\/script>')
 
+    data_type = json_data.get('file_info', {}).get('data_type', 'deg')
+    if data_type == 'expr':
+        page_title = 'Expression Schema Browser'
+        page_subtitle = 'Comprehensive exploration of Omicsoft expression data metadata'
+    elif data_type == 'deg':
+        page_title = 'DEG Schema Browser'
+        page_subtitle = 'Comprehensive exploration of Omicsoft DEG analysis metadata'
+    else:
+        page_title = 'H5AD Schema Browser'
+        page_subtitle = 'Comprehensive exploration of Omicsoft h5ad file metadata'
+
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>H5AD Schema Browser</title>
+    <title>{page_title}</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
@@ -220,8 +231,8 @@ def generate_html(json_data):
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔬 H5AD Schema Browser</h1>
-            <p>Comprehensive exploration of Omicsoft DEG analysis h5ad file metadata</p>
+            <h1>{page_title}</h1>
+            <p>{page_subtitle}</p>
         </div>
 
         <div class="controls">
@@ -262,9 +273,13 @@ def generate_html(json_data):
 
         function renderFileInfo() {{
             const info = schemaData.file_info;
+            const nVars = info.n_variables || (schemaData.var_info && schemaData.var_info.n_genes) || 'N/A';
+            const nVarsStr = typeof nVars === 'number' ? nVars.toLocaleString() : nVars;
+            const dataType = info.data_type || '';
+            const typeBadge = dataType ? `<span style="background:#667eea;color:white;padding:2px 8px;border-radius:3px;font-size:11px;margin-left:8px;">${{dataType.toUpperCase()}}</span>` : '';
             const html = `
                 <div class="info-card">
-                    <h3>File Information</h3>
+                    <h3>File Information ${{typeBadge}}</h3>
                     <div class="info-grid">
                         <div class="info-item">
                             <span>Observations:</span>
@@ -272,11 +287,11 @@ def generate_html(json_data):
                         </div>
                         <div class="info-item">
                             <span>Variables (Genes):</span>
-                            <strong>${{info.n_variables.toLocaleString()}}</strong>
+                            <strong>${{nVarsStr}}</strong>
                         </div>
                     </div>
                     <p style="margin-top: 10px; font-size: 13px; color: #495057;">
-                        ${{info.observation_description}}
+                        ${{info.observation_description || ''}}
                     </p>
                 </div>
             `;
@@ -285,7 +300,7 @@ def generate_html(json_data):
 
         function renderSchema() {{
             const categories = schemaData.column_categories;
-            const categoryNames = {{
+            const knownNames = {{
                 'key_filtering': 'Key Filtering Columns',
                 'demographic': 'Demographics',
                 'case_disease': 'Case Disease Information',
@@ -293,8 +308,16 @@ def generate_html(json_data):
                 'treatment': 'Treatment Information',
                 'response': 'Response Information',
                 'sample': 'Sample Information',
-                'comparison_details': 'Comparison Details'
+                'comparison_details': 'Comparison Details',
+                'experiment': 'Experiment Information',
+                'study': 'Study Information',
+                'biological': 'Biological Annotations',
+                'disease': 'Disease Information'
             }};
+            const categoryNames = {{}};
+            for (const key of Object.keys(categories)) {{
+                categoryNames[key] = knownNames[key] || key.replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());
+            }}
 
             let html = '';
 
