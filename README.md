@@ -46,10 +46,11 @@ agent-skill-mcp/
 
 Claude Code skills provide specialized workflows and domain knowledge for specific tasks.
 
-### Single-Cell RNA-seq
+### Single-Cell RNA-seq & Epigenomics
 
 | Skill | Description |
 |-------|-------------|
+| [scATAC-GRN](skills/scatac-grn/) | Query and retrieve base-GRN (gene regulatory network) priors from Chen 2026 human scATAC atlas (1,028 tissue×celltype combos, 56 tissues, 247 cell types). Interactive cis-regulatory track visualization with multi-TF support. |
 | [CELLxGENE Census](skills/cellxgene/) | Query and download expression data from CELLxGENE Census with flexible metadata filtering, cell type marker extraction, and specificity analysis |
 | [CellChat](skills/cellchat/) | Cell-cell communication analysis: ligand-receptor interaction inference, multi-condition comparison, CellChatDB v2 |
 | [CyteType](skills/cytetype/) | Automated cell type annotation using multi-agent AI architecture with GPU-aware compute, 3-agent consensus, and confidence scoring |
