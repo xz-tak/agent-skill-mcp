@@ -101,6 +101,22 @@ STUDY_CONFIGS = {
         'sample_col': 'sample_id',
         'embedding_key': 'X_umap',
     },
+    'ibd_atlas': {
+        's3_path': 's3://tec-rnd-sci-dev-gi2/gi2-xz/omicsoft/sc_ibd_mash_ssc_hs_internal_06102026/ibd/atlas042026_sc/integration_scanpy.h5ad',
+        'cell_type_col': 'cluster',
+        'condition_col': ['condition', 'disease', 'comb_condition'],
+        'sample_col': 'sample',
+        'embedding_key': 'X_umap',
+        'comb_condition_cols': ['disease', 'condition'],
+        'skip_aucell': True,
+    },
+    'umcg_change': {
+        's3_path': 's3://tec-rnd-sci-dev-gi2/gi2-xz/omicsoft/sc_ibd_mash_ssc_hs_internal_06102026/ibd/umcg_change_sc/umcg_change_scanpy.h5ad',
+        'cell_type_col': 'cluster',
+        'condition_col': 'condition',
+        'sample_col': 'sample',
+        'embedding_key': 'X_umap',
+    },
 }
 
 
@@ -136,7 +152,7 @@ Target-signature pairing format:
                              'Scored independently via AUCell. Genes are NOT merged into target-paired signatures.')
     parser.add_argument('--output-dir', required=True,
                         help='Output directory for results')
-    parser.add_argument('--studies', default=None,
+    parser.add_argument('--sc-studies', default=None,
                         help='Comma-separated study names (default: all)')
     parser.add_argument('--max-workers', type=int, default=1,
                         help='Parallel workers (default: 1)')
@@ -604,11 +620,17 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
     print(f"{'='*60}")
 
     cell_type_col = study_config['cell_type_col']
-    condition_col = study_config['condition_col']
+    condition_cols_raw = study_config['condition_col']
+    condition_cols = [condition_cols_raw] if isinstance(condition_cols_raw, str) else list(condition_cols_raw)
     sample_col = study_config['sample_col']
 
     # 1. Download & Load
     adata = download_and_load_adata(study_config['s3_path'], study_name, temp_dir)
+
+    # Create comb_condition if specified
+    if 'comb_condition_cols' in study_config:
+        cols = study_config['comb_condition_cols']
+        adata.obs['comb_condition'] = (adata.obs[cols[0]].astype(str) + '_' + adata.obs[cols[1]].astype(str)).astype('category')
 
     # 2. Resolve embedding
     embedding_key = resolve_embedding_key(adata, study_config, study_name)
@@ -618,14 +640,18 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
     os.makedirs(study_out, exist_ok=True)
 
     # 4. AUCell scoring
-    print(f"  [{study_name}] Running AUCell scoring...")
-    adata = run_aucell_scoring(adata, signature_dict)
+    skip_aucell = study_config.get('skip_aucell', False)
+    if not skip_aucell:
+        print(f"  [{study_name}] Running AUCell scoring...")
+        adata = run_aucell_scoring(adata, signature_dict)
+    else:
+        print(f"  [{study_name}] Skipping AUCell scoring (skip_aucell=True)")
 
     # Derived lists
     all_targets = signature_dict['target']
     sig_names = [k for k in signature_dict if k != 'target']
     target_genes_in_data = [g for g in all_targets if g in adata.var_names]
-    sig_scores_in_data = [s for s in sig_names if s in adata.obs.columns]
+    sig_scores_in_data = [s for s in sig_names if s in adata.obs.columns] if not skip_aucell else []
 
     cell_types = adata.obs[cell_type_col].cat.categories.tolist() if hasattr(adata.obs[cell_type_col], 'cat') else sorted(adata.obs[cell_type_col].unique())
 
@@ -646,8 +672,8 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
             print(f"  [{study_name}] Embedding plots (using {embedding_key})...")
             embed_label = embedding_key.replace('X_', '').upper() if embedding_key != 'X_umap' else 'UMAP'
 
-            for color_col in [condition_col, cell_type_col]:
-                fig_umap = create_plotly_umap(adata, color_col, cell_type_col, condition_col,
+            for color_col in condition_cols + [cell_type_col]:
+                fig_umap = create_plotly_umap(adata, color_col, cell_type_col, condition_cols[0],
                                               f'{study_name} - {embed_label} colored by {color_col}',
                                               embedding_key=embedding_key)
                 umap_figures[color_col] = fig_umap
@@ -661,7 +687,7 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
                     plt.close(fig_static)
 
             for sig_name in sig_scores_in_data:
-                fig_umap = create_plotly_umap(adata, sig_name, cell_type_col, condition_col,
+                fig_umap = create_plotly_umap(adata, sig_name, cell_type_col, condition_cols[0],
                                               f'{study_name} - {embed_label}: {sig_name} AUCell score',
                                               embedding_key=embedding_key)
                 umap_figures[sig_name] = fig_umap
@@ -675,7 +701,7 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
                     plt.close(fig_static)
 
             for gene in target_genes_in_data:
-                fig_umap = create_plotly_umap(adata, gene, cell_type_col, condition_col,
+                fig_umap = create_plotly_umap(adata, gene, cell_type_col, condition_cols[0],
                                               f'{study_name} - {embed_label}: {gene} expression',
                                               embedding_key=embedding_key)
                 umap_figures[gene] = fig_umap
@@ -698,19 +724,20 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
             if not valid_genes:
                 continue
 
-            try:
-                sc.pl.dotplot(adata, valid_genes, groupby=condition_col,
-                              title=f'{sig_name} across {condition_col}',
-                              mean_only_expressed=True, show=False, return_fig=False)
-                fig_static = plt.gcf()
-                pdf.savefig(fig_static, dpi=300, bbox_inches='tight')
-                all_pdf_plots.append((f'Dotplot - {sig_name} by {condition_col}', _fig_to_base64(fig_static)))
-                plt.close(fig_static)
-                fig_plotly = create_plotly_dotplot(adata, valid_genes, groupby=condition_col,
-                                                   title=f'{sig_name} across {condition_col}')
-                dotplot_figures.append((f'Dotplot - {sig_name} by {condition_col}', fig_plotly))
-            except Exception:
-                plt.close('all')
+            for condition_col in condition_cols:
+                try:
+                    sc.pl.dotplot(adata, valid_genes, groupby=condition_col,
+                                  title=f'{sig_name} across {condition_col}',
+                                  mean_only_expressed=True, show=False, return_fig=False)
+                    fig_static = plt.gcf()
+                    pdf.savefig(fig_static, dpi=300, bbox_inches='tight')
+                    all_pdf_plots.append((f'Dotplot - {sig_name} by {condition_col}', _fig_to_base64(fig_static)))
+                    plt.close(fig_static)
+                    fig_plotly = create_plotly_dotplot(adata, valid_genes, groupby=condition_col,
+                                                       title=f'{sig_name} across {condition_col}')
+                    dotplot_figures.append((f'Dotplot - {sig_name} by {condition_col}', fig_plotly))
+                except Exception:
+                    plt.close('all')
 
             try:
                 sc.pl.dotplot(adata, valid_genes, groupby=cell_type_col,
@@ -728,18 +755,19 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
 
         # === Signature Score Dotplots (Global) ===
         if sig_scores_in_data:
-            try:
-                fig_plotly = create_plotly_score_dotplot(adata, sig_scores_in_data, groupby=condition_col,
-                                                         title=f'Signature Scores by {condition_col}')
-                dotplot_figures.append((f'Score Dotplot - Signatures by {condition_col}', fig_plotly))
-                fig_static = _score_dotplot_static(adata, sig_scores_in_data, groupby=condition_col,
-                                                    title=f'Signature Scores by {condition_col}')
-                if fig_static:
-                    pdf.savefig(fig_static, dpi=300, bbox_inches='tight')
-                    all_pdf_plots.append((f'Score Dotplot - Signatures by {condition_col}', _fig_to_base64(fig_static)))
-                    plt.close(fig_static)
-            except Exception:
-                plt.close('all')
+            for condition_col in condition_cols:
+                try:
+                    fig_plotly = create_plotly_score_dotplot(adata, sig_scores_in_data, groupby=condition_col,
+                                                             title=f'Signature Scores by {condition_col}')
+                    dotplot_figures.append((f'Score Dotplot - Signatures by {condition_col}', fig_plotly))
+                    fig_static = _score_dotplot_static(adata, sig_scores_in_data, groupby=condition_col,
+                                                        title=f'Signature Scores by {condition_col}')
+                    if fig_static:
+                        pdf.savefig(fig_static, dpi=300, bbox_inches='tight')
+                        all_pdf_plots.append((f'Score Dotplot - Signatures by {condition_col}', _fig_to_base64(fig_static)))
+                        plt.close(fig_static)
+                except Exception:
+                    plt.close('all')
 
             try:
                 fig_plotly = create_plotly_score_dotplot(adata, sig_scores_in_data, groupby=cell_type_col,
@@ -768,15 +796,16 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
             except Exception:
                 plt.close('all')
 
-            try:
-                sc.pl.stacked_violin(adata, sig_scores_in_data, groupby=condition_col,
-                                     title='AUCell scores across conditions', show=False, return_fig=False)
-                fig_static = plt.gcf()
-                pdf.savefig(fig_static, dpi=300, bbox_inches='tight')
-                all_pdf_plots.append(('Stacked Violin - AUCell by condition', _fig_to_base64(fig_static)))
-                plt.close(fig_static)
-            except Exception:
-                plt.close('all')
+            for condition_col in condition_cols:
+                try:
+                    sc.pl.stacked_violin(adata, sig_scores_in_data, groupby=condition_col,
+                                         title=f'AUCell scores across {condition_col}', show=False, return_fig=False)
+                    fig_static = plt.gcf()
+                    pdf.savefig(fig_static, dpi=300, bbox_inches='tight')
+                    all_pdf_plots.append((f'Stacked Violin - AUCell by {condition_col}', _fig_to_base64(fig_static)))
+                    plt.close(fig_static)
+                except Exception:
+                    plt.close('all')
 
         # === Boxplot Section (Global) ===
         print(f"  [{study_name}] Global boxplots...")
@@ -809,32 +838,33 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
         # === Population Composition ===
         if HAS_XZSC:
             print(f"  [{study_name}] Population composition...")
-            try:
-                pc = ci.ro.sc.PopulationComposition(adata, sample_col, condition_col, cell_type_col)
-                pc.boxplot(figsize=(18, 6))
-                fig_pc = plt.gcf()
-                fig_pc.suptitle(f'{study_name} - Population Composition')
-                pdf.savefig(fig_pc, dpi=300, bbox_inches='tight')
-                all_pdf_plots.append(('PopulationComposition', _fig_to_base64(fig_pc)))
-                plt.close(fig_pc)
+            for condition_col in condition_cols:
+                try:
+                    pc = ci.ro.sc.PopulationComposition(adata, sample_col, condition_col, cell_type_col)
+                    pc.boxplot(figsize=(18, 6))
+                    fig_pc = plt.gcf()
+                    fig_pc.suptitle(f'{study_name} - Population Composition ({condition_col})')
+                    pdf.savefig(fig_pc, dpi=300, bbox_inches='tight')
+                    all_pdf_plots.append((f'PopulationComposition ({condition_col})', _fig_to_base64(fig_pc)))
+                    plt.close(fig_pc)
 
-                fractions = pc.fractions.copy()
-                if condition_col in fractions.columns and cell_type_col in fractions.columns:
-                    fig_popcomp = go.Figure()
-                    for ct in fractions[cell_type_col].unique():
-                        ct_data = fractions[fractions[cell_type_col] == ct]
-                        for cond in ct_data[condition_col].unique():
-                            cond_data = ct_data[ct_data[condition_col] == cond]
-                            fig_popcomp.add_trace(go.Box(
-                                y=cond_data['fraction'] if 'fraction' in cond_data.columns else cond_data.iloc[:, -1],
-                                name=f'{ct} | {cond}', boxpoints='all',
-                                hovertemplate=f'Cell type: {ct}<br>Condition: {cond}<br>Fraction: %{{y:.4f}}<extra></extra>',
-                            ))
-                    fig_popcomp.update_layout(title=f'{study_name} - Population Composition',
-                                              width=1200, height=600, showlegend=False)
-            except Exception as e:
-                print(f"  [{study_name}] PopComp failed: {e}")
-                plt.close('all')
+                    fractions = pc.fractions.copy()
+                    if condition_col in fractions.columns and cell_type_col in fractions.columns:
+                        fig_popcomp = go.Figure()
+                        for ct in fractions[cell_type_col].unique():
+                            ct_data = fractions[fractions[cell_type_col] == ct]
+                            for cond in ct_data[condition_col].unique():
+                                cond_data = ct_data[ct_data[condition_col] == cond]
+                                fig_popcomp.add_trace(go.Box(
+                                    y=cond_data['fraction'] if 'fraction' in cond_data.columns else cond_data.iloc[:, -1],
+                                    name=f'{ct} | {cond}', boxpoints='all',
+                                    hovertemplate=f'Cell type: {ct}<br>Condition: {cond}<br>Fraction: %{{y:.4f}}<extra></extra>',
+                                ))
+                        fig_popcomp.update_layout(title=f'{study_name} - Population Composition ({condition_col})',
+                                                  width=1200, height=600, showlegend=False)
+                except Exception as e:
+                    print(f"  [{study_name}] PopComp ({condition_col}) failed: {e}")
+                    plt.close('all')
         else:
             print(f"  [{study_name}] Skipping population composition (xzsc not installed)")
 
@@ -852,34 +882,36 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
                 valid_genes = [g for g in sig_genes if g in adata.var_names]
                 if not valid_genes:
                     continue
-                try:
-                    sc.pl.dotplot(ct_adata, valid_genes, groupby=condition_col,
-                                  title=f'{sig_name} in {ct} by {condition_col}',
-                                  mean_only_expressed=True, show=False, return_fig=False)
-                    fig_static = plt.gcf()
-                    pdf.savefig(fig_static, dpi=300, bbox_inches='tight')
-                    all_pdf_plots.append((f'Dotplot - {sig_name} in {ct}', _fig_to_base64(fig_static)))
-                    plt.close(fig_static)
-                    fig_plotly = create_plotly_dotplot(ct_adata, valid_genes, groupby=condition_col,
-                                                       title=f'{sig_name} in {ct} by {condition_col}')
-                    dotplot_figures.append((f'Dotplot - {sig_name} in {ct}', fig_plotly))
-                except Exception:
-                    plt.close('all')
+                for condition_col in condition_cols:
+                    try:
+                        sc.pl.dotplot(ct_adata, valid_genes, groupby=condition_col,
+                                      title=f'{sig_name} in {ct} by {condition_col}',
+                                      mean_only_expressed=True, show=False, return_fig=False)
+                        fig_static = plt.gcf()
+                        pdf.savefig(fig_static, dpi=300, bbox_inches='tight')
+                        all_pdf_plots.append((f'Dotplot - {sig_name} in {ct} by {condition_col}', _fig_to_base64(fig_static)))
+                        plt.close(fig_static)
+                        fig_plotly = create_plotly_dotplot(ct_adata, valid_genes, groupby=condition_col,
+                                                           title=f'{sig_name} in {ct} by {condition_col}')
+                        dotplot_figures.append((f'Dotplot - {sig_name} in {ct} by {condition_col}', fig_plotly))
+                    except Exception:
+                        plt.close('all')
 
             # Signature score dotplot for this cell type
             if sig_scores_in_data:
-                try:
-                    fig_plotly = create_plotly_score_dotplot(ct_adata, sig_scores_in_data, groupby=condition_col,
-                                                             title=f'Signature Scores in {ct} by {condition_col}')
-                    dotplot_figures.append((f'Score Dotplot - Signatures in {ct}', fig_plotly))
-                    fig_static = _score_dotplot_static(ct_adata, sig_scores_in_data, groupby=condition_col,
-                                                        title=f'Signature Scores in {ct} by {condition_col}')
-                    if fig_static:
-                        pdf.savefig(fig_static, dpi=300, bbox_inches='tight')
-                        all_pdf_plots.append((f'Score Dotplot - Signatures in {ct}', _fig_to_base64(fig_static)))
-                        plt.close(fig_static)
-                except Exception:
-                    plt.close('all')
+                for condition_col in condition_cols:
+                    try:
+                        fig_plotly = create_plotly_score_dotplot(ct_adata, sig_scores_in_data, groupby=condition_col,
+                                                                 title=f'Signature Scores in {ct} by {condition_col}')
+                        dotplot_figures.append((f'Score Dotplot - Signatures in {ct} by {condition_col}', fig_plotly))
+                        fig_static = _score_dotplot_static(ct_adata, sig_scores_in_data, groupby=condition_col,
+                                                            title=f'Signature Scores in {ct} by {condition_col}')
+                        if fig_static:
+                            pdf.savefig(fig_static, dpi=300, bbox_inches='tight')
+                            all_pdf_plots.append((f'Score Dotplot - Signatures in {ct} by {condition_col}', _fig_to_base64(fig_static)))
+                            plt.close(fig_static)
+                    except Exception:
+                        plt.close('all')
 
             if len(target_genes_in_data) >= 2:
                 try:
@@ -1331,8 +1363,8 @@ def main():
     max_workers = args.max_workers
 
     # Filter studies
-    if args.studies:
-        study_names = [s.strip() for s in args.studies.split(',')]
+    if args.sc_studies:
+        study_names = [s.strip() for s in args.sc_studies.split(',')]
         studies = {k: v for k, v in STUDY_CONFIGS.items() if k in study_names}
         skipped = [k for k in study_names if k not in STUDY_CONFIGS]
         if skipped:

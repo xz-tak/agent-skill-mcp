@@ -194,6 +194,8 @@ def derive_yokohama_rna_fibrosis(df):
     df["yokohama_rna_fibrosis"] = "F" + pd.to_numeric(df["metadata_stage"], errors="coerce").astype("Int64").astype(str)
     valid = {"F0", "F1", "F2", "F3", "F4"}
     df.loc[~df["yokohama_rna_fibrosis"].isin(valid), "yokohama_rna_fibrosis"] = np.nan
+    rna_score_map = {"F0": 0, "F1": 1, "F2": 2, "F3": 3, "F4": 4}
+    df["fibrosis_score"] = df["yokohama_rna_fibrosis"].map(rna_score_map)
     return df
 
 
@@ -219,6 +221,8 @@ def derive_yokohama_prot_fibrosis(df):
     fib = df.get("metadata_Fibrosis", pd.Series(dtype=str)).astype(str)
     valid = {"Healthy", "F0", "F1", "F2", "F3", "F4"}
     df["yokohama_prot_fibrosis"] = np.where(fib.isin(valid), fib, "_INVALID_")
+    prot_score_map = {"Healthy": 0, "F0": 0.5, "F1": 1, "F2": 2, "F3": 3, "F4": 4}
+    df["fibrosis_score"] = df["yokohama_prot_fibrosis"].map(prot_score_map)
     return df
 
 
@@ -1333,10 +1337,9 @@ def run_target_vs_continuous(expr_df, target_genes, continuous_cols, output_dir,
             })
             for xi, yi in zip(xv, yv):
                 scatter_data.append({"Gene": gene, "x_val": xi, "y_val": yi})
-            asterisk = get_asterisk(p_spear)
             annot_data.append({
                 "Gene": gene,
-                "label": f"rho={rho:.2f}{asterisk}, p={p_spear:.2e}, n={n_valid}"
+                "label": f"Spearman: r={rho:.2f}, p={p_spear:.2e}\nPearson: r={r_pear:.2f}, p={p_pear:.2e}\nn={n_valid}"
             })
 
         if not scatter_data:
@@ -1351,6 +1354,7 @@ def run_target_vs_continuous(expr_df, target_genes, continuous_cols, output_dir,
         fig, axes = plt.subplots(n_rows_p, n_cols_p,
                                  figsize=(max(10, n_cols_p * 4), max(6, n_rows_p * 3.5)),
                                  squeeze=False)
+        from scipy.stats import t as t_dist
         for idx, gene in enumerate(found_genes):
             r_idx, c_idx = divmod(idx, n_cols_p)
             ax = axes[r_idx, c_idx]
@@ -1359,15 +1363,27 @@ def run_target_vs_continuous(expr_df, target_genes, continuous_cols, output_dir,
                 ax.set_visible(False)
                 continue
             ax.scatter(gdf["x_val"], gdf["y_val"], alpha=0.6, s=8, color="#2166AC")
-            if len(gdf) >= 2:
-                z = np.polyfit(gdf["x_val"], gdf["y_val"], 1)
+            if len(gdf) >= 3:
+                x = gdf["x_val"].values
+                y = gdf["y_val"].values
+                z = np.polyfit(x, y, 1)
                 p_line = np.poly1d(z)
-                x_range = np.linspace(gdf["x_val"].min(), gdf["x_val"].max(), 50)
-                ax.plot(x_range, p_line(x_range), color="#B2182B", linewidth=0.8)
+                x_range = np.linspace(x.min(), x.max(), 50)
+                y_pred = p_line(x_range)
+                ax.plot(x_range, y_pred, color="#B2182B", linewidth=1.2)
+                n_pts = len(x)
+                residuals = y - p_line(x)
+                se = np.sqrt(np.sum(residuals**2) / (n_pts - 2))
+                x_mean = x.mean()
+                ss_x = np.sum((x - x_mean)**2)
+                se_line = se * np.sqrt(1/n_pts + (x_range - x_mean)**2 / ss_x)
+                t_val = t_dist.ppf(0.975, n_pts - 2)
+                ax.fill_between(x_range, y_pred - t_val * se_line, y_pred + t_val * se_line,
+                                alpha=0.15, color="#B2182B")
             ann = annot_df[annot_df["Gene"] == gene]
             if not ann.empty:
                 ax.text(0.05, 0.95, ann.iloc[0]["label"], transform=ax.transAxes,
-                        fontsize=7, va="top", ha="left")
+                        fontsize=6, va="top", ha="left", linespacing=1.4)
             ax.set_title(gene, fontsize=11, fontweight="bold")
             ax.set_xlabel(var_name, fontsize=9)
             ax.set_ylabel("Expression", fontsize=9)
@@ -1383,7 +1399,8 @@ def run_target_vs_continuous(expr_df, target_genes, continuous_cols, output_dir,
         plt.close(fig)
         print(f"  Saved: {base}.png", file=sys.stderr)
 
-        # HTML scatter
+        # HTML scatter with CI band
+        from scipy.stats import t as t_dist_html
         scatter_df["hover_text"] = scatter_df.apply(
             lambda r: f"Gene: {r['Gene']}<br>{var_name}: {r['x_val']:.2f}<br>Expression: {r['y_val']:.3f}",
             axis=1)
@@ -1393,6 +1410,41 @@ def run_target_vs_continuous(expr_df, target_genes, continuous_cols, output_dir,
                               trendline="ols",
                               title=f"Target Expression vs {var_name} - {study_name}",
                               labels={"x_val": var_name, "y_val": "Expression"})
+        for i, gene in enumerate(found_genes):
+            gdf = scatter_df[scatter_df["Gene"] == gene]
+            if len(gdf) >= 3:
+                x = gdf["x_val"].values
+                y = gdf["y_val"].values
+                z = np.polyfit(x, y, 1)
+                p_line = np.poly1d(z)
+                x_range = np.linspace(x.min(), x.max(), 50)
+                y_pred = p_line(x_range)
+                n_pts = len(x)
+                residuals = y - p_line(x)
+                se = np.sqrt(np.sum(residuals**2) / (n_pts - 2))
+                x_mean = x.mean()
+                ss_x = np.sum((x - x_mean)**2)
+                se_line = se * np.sqrt(1/n_pts + (x_range - x_mean)**2 / ss_x)
+                t_val = t_dist_html.ppf(0.975, n_pts - 2)
+                ci_upper = y_pred + t_val * se_line
+                ci_lower = y_pred - t_val * se_line
+                axis_suffix = str(i + 1) if i > 0 else ""
+                fig_html.add_trace(go.Scatter(
+                    x=np.concatenate([x_range, x_range[::-1]]),
+                    y=np.concatenate([ci_upper, ci_lower[::-1]]),
+                    fill='toself', fillcolor='rgba(178,24,43,0.15)',
+                    line=dict(color='rgba(0,0,0,0)'), showlegend=False,
+                    hoverinfo='skip', xaxis=f"x{axis_suffix}", yaxis=f"y{axis_suffix}",
+                ))
+            ann = annot_df[annot_df["Gene"] == gene]
+            if not ann.empty:
+                fig_html.add_annotation(
+                    text=ann.iloc[0]["label"].replace("\n", "<br>"),
+                    x=0.05, y=0.95, xanchor="left", yanchor="top",
+                    showarrow=False, font=dict(size=9),
+                    xref=f"x{i+1} domain" if i > 0 else "x domain",
+                    yref=f"y{i+1} domain" if i > 0 else "y domain",
+                )
         fig_html.write_html(f"{base}.html")
         print(f"  Saved: {base}.html", file=sys.stderr)
 
@@ -1451,11 +1503,49 @@ def run_gsva_vs_continuous(gsva_scores_df, expr_df, continuous_cols, output_dir,
         if not scatter_data:
             continue
         scatter_df = pd.DataFrame(scatter_data)
+        from scipy.stats import t as t_dist_gsva
         fig_html = px.scatter(scatter_df, x="x_val", y="y_val", facet_col="Signature",
                               facet_col_wrap=min(len(sig_names), 3),
                               color_discrete_sequence=["#2166AC"], trendline="ols",
                               title=f"GSVA Score vs {var_name} - {study_name}",
                               labels={"x_val": var_name, "y_val": "GSVA Score"})
+        for i, sig in enumerate(sig_names):
+            sdf = scatter_df[scatter_df["Signature"] == sig]
+            if len(sdf) >= 3:
+                x = sdf["x_val"].values
+                y = sdf["y_val"].values
+                z = np.polyfit(x, y, 1)
+                p_line = np.poly1d(z)
+                x_range = np.linspace(x.min(), x.max(), 50)
+                y_pred = p_line(x_range)
+                n_pts = len(x)
+                residuals = y - p_line(x)
+                se = np.sqrt(np.sum(residuals**2) / (n_pts - 2))
+                x_mean = x.mean()
+                ss_x = np.sum((x - x_mean)**2)
+                se_line = se * np.sqrt(1/n_pts + (x_range - x_mean)**2 / ss_x)
+                t_val = t_dist_gsva.ppf(0.975, n_pts - 2)
+                ci_upper = y_pred + t_val * se_line
+                ci_lower = y_pred - t_val * se_line
+                axis_suffix = str(i + 1) if i > 0 else ""
+                fig_html.add_trace(go.Scatter(
+                    x=np.concatenate([x_range, x_range[::-1]]),
+                    y=np.concatenate([ci_upper, ci_lower[::-1]]),
+                    fill='toself', fillcolor='rgba(178,24,43,0.15)',
+                    line=dict(color='rgba(0,0,0,0)'), showlegend=False,
+                    hoverinfo='skip', xaxis=f"x{axis_suffix}", yaxis=f"y{axis_suffix}",
+                ))
+            sig_stat = next((s for s in all_stats if s["signature"] == sig and s["continuous_var"] == var_name), None)
+            if sig_stat:
+                ann_text = (f"Spearman: r={sig_stat['spearman_rho']:.2f}, p={sig_stat['spearman_pval']:.2e}<br>"
+                            f"Pearson: r={sig_stat['pearson_r']:.2f}, p={sig_stat['pearson_pval']:.2e}<br>"
+                            f"n={sig_stat['n']}")
+                fig_html.add_annotation(
+                    text=ann_text, x=0.05, y=0.95, xanchor="left", yanchor="top",
+                    showarrow=False, font=dict(size=9),
+                    xref=f"x{i+1} domain" if i > 0 else "x domain",
+                    yref=f"y{i+1} domain" if i > 0 else "y domain",
+                )
         base = os.path.join(cor_dir, f"{study_name}_gsva_vs_{var_name}")
         fig_html.write_html(f"{base}.html")
         print(f"  Saved: {base}.html", file=sys.stderr)
@@ -1467,6 +1557,7 @@ def run_gsva_vs_continuous(gsva_scores_df, expr_df, continuous_cols, output_dir,
         fig, axes = plt.subplots(n_rows_p, n_cols_p,
                                  figsize=(max(10, n_cols_p * 4.5), max(5, n_rows_p * 3.5)),
                                  squeeze=False)
+        from scipy.stats import t as t_dist
         for idx, sig in enumerate(sig_names):
             r_idx, c_idx = divmod(idx, n_cols_p)
             ax = axes[r_idx, c_idx]
@@ -1475,11 +1566,30 @@ def run_gsva_vs_continuous(gsva_scores_df, expr_df, continuous_cols, output_dir,
                 ax.set_visible(False)
                 continue
             ax.scatter(sdf["x_val"], sdf["y_val"], alpha=0.6, s=8, color="#2166AC")
-            if len(sdf) >= 2:
-                z = np.polyfit(sdf["x_val"], sdf["y_val"], 1)
+            if len(sdf) >= 3:
+                x = sdf["x_val"].values
+                y = sdf["y_val"].values
+                z = np.polyfit(x, y, 1)
                 p_line = np.poly1d(z)
-                x_range = np.linspace(sdf["x_val"].min(), sdf["x_val"].max(), 50)
-                ax.plot(x_range, p_line(x_range), color="#B2182B", linewidth=0.8)
+                x_range = np.linspace(x.min(), x.max(), 50)
+                y_pred = p_line(x_range)
+                ax.plot(x_range, y_pred, color="#B2182B", linewidth=1.2)
+                n_pts = len(x)
+                residuals = y - p_line(x)
+                se = np.sqrt(np.sum(residuals**2) / (n_pts - 2))
+                x_mean = x.mean()
+                ss_x = np.sum((x - x_mean)**2)
+                se_line = se * np.sqrt(1/n_pts + (x_range - x_mean)**2 / ss_x)
+                t_val = t_dist.ppf(0.975, n_pts - 2)
+                ax.fill_between(x_range, y_pred - t_val * se_line, y_pred + t_val * se_line,
+                                alpha=0.15, color="#B2182B")
+            sig_stat = next((s for s in all_stats if s["signature"] == sig and s["continuous_var"] == var_name), None)
+            if sig_stat:
+                ann_text = (f"Spearman: r={sig_stat['spearman_rho']:.2f}, p={sig_stat['spearman_pval']:.2e}\n"
+                            f"Pearson: r={sig_stat['pearson_r']:.2f}, p={sig_stat['pearson_pval']:.2e}\n"
+                            f"n={sig_stat['n']}")
+                ax.text(0.05, 0.95, ann_text, transform=ax.transAxes,
+                        fontsize=6, va="top", ha="left", linespacing=1.4)
             ax.set_title(sig, fontsize=11, fontweight="bold")
             ax.set_xlabel(var_name, fontsize=9)
             ax.set_ylabel("GSVA Score", fontsize=9)
@@ -1537,6 +1647,20 @@ def run_internal_study(study_name, study_df, expr_mat, deg_df, config,
         varsity_mask = study_df["week_response"].isin(config["group_levels"]).values
         study_df = study_df.loc[varsity_mask]
         print(f"  Varsity: derived week_response, remaining samples: {len(study_df)}", file=sys.stderr)
+
+    # Derive fibrosis_score for continuous correlation (Yokohama studies)
+    if "fibrosis_score" in config.get("continuous_cols", []):
+        if study_name == "Yokohama_RNA":
+            rna_map = {"F0": 0, "F1": 1, "F2": 2, "F3": 3, "F4": 4}
+            stage_col = "metadata_stage"
+            if stage_col in study_df.columns:
+                fib_label = "F" + pd.to_numeric(study_df[stage_col], errors="coerce").astype("Int64").astype(str)
+                study_df["fibrosis_score"] = fib_label.map(rna_map)
+        elif study_name == "Yokohama_Protein":
+            prot_map = {"Healthy": 0, "F0": 0.5, "F1": 1, "F2": 2, "F3": 3, "F4": 4}
+            fib_col = "metadata_Fibrosis"
+            if fib_col in study_df.columns:
+                study_df["fibrosis_score"] = study_df[fib_col].astype(str).map(prot_map)
 
     # Determine grouping configs
     if "groupings" in config:
@@ -1668,9 +1792,11 @@ def run_internal_study(study_name, study_df, expr_mat, deg_df, config,
             # GSVA
             gsva_scores_df = None
             gsva_stats = None
+            _gsva_sample_index = None
             if signatures and len(gene_cols_for_gsva) >= 5:
                 expr_mat_gsva = ds_expr[gene_cols_for_gsva].T.astype(float)
                 _npad = len(str(expr_mat_gsva.shape[1] - 1))
+                _gsva_sample_index = list(ds_expr.index)
                 expr_mat_gsva.columns = [f"s{i:0{_npad}d}" for i in range(expr_mat_gsva.shape[1])]
                 expr_mat_gsva = expr_mat_gsva.loc[expr_mat_gsva.abs().sum(axis=1) > 0]
                 expr_mat_gsva = expr_mat_gsva[~expr_mat_gsva.index.duplicated()]
@@ -1775,8 +1901,11 @@ def run_internal_study(study_name, study_df, expr_mat, deg_df, config,
     continuous_cols = config.get("continuous_cols", [])
     if continuous_cols and found_targets:
         run_target_vs_continuous(study_df, found_targets, continuous_cols, study_output, study_name)
-        if gsva_scores_df is not None:
-            run_gsva_vs_continuous(gsva_scores_df, study_df, continuous_cols, study_output, study_name)
+        if gsva_scores_df is not None and _gsva_sample_index is not None:
+            _npad = len(str(len(_gsva_sample_index) - 1))
+            col_map = {f"s{i:0{_npad}d}": idx for i, idx in enumerate(_gsva_sample_index)}
+            gsva_remapped = gsva_scores_df.rename(columns=col_map)
+            run_gsva_vs_continuous(gsva_remapped, study_df, continuous_cols, study_output, study_name)
 
 
 # =============================================================================

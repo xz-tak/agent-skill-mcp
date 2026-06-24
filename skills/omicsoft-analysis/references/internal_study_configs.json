@@ -140,7 +140,7 @@
         "comparisons": []
       }
     },
-    "continuous_cols": [],
+    "continuous_cols": ["fibrosis_score"],
     "sig_col": "padj",
     "sig_threshold": 0.05,
     "log2fc_threshold": 0
@@ -242,7 +242,7 @@
         "comparisons": []
       }
     },
-    "continuous_cols": [],
+    "continuous_cols": ["fibrosis_score"],
     "sig_col": "padj",
     "sig_threshold": 0.05,
     "log2fc_threshold": 0

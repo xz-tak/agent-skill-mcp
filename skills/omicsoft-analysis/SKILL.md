@@ -76,7 +76,8 @@ Ask the user for the following information:
    - Format: same as signatures `"Name:Gene1,Gene2;Name2:GeneA,GeneB"`
    - Use for pathway/module signatures that should be analyzed alongside but are conceptually separate from targets
    - Example: `--addon-signatures "Fibrosis_module:COL1A1,COL3A1,FN1;Inflammation:TNF,IL6,IL1B"`
-   - For SC script: passed directly via `--addon-signatures` (not positionally paired)
+   - For SC script: passed directly via `--addon-signatures` (not positionally paired with targets)
+   - Both `--signatures` and `--addon-signatures` are optional in `sc_target_analysis.py` — only `--targets` is required. Addon signatures are still scored via AUCell and appear in score-based plots (signature score dotplots, stacked violins, score correlation heatmaps).
 
    **When gathering requirements, use AskUserQuestion to ask:**
    - "Do you have target-signature pairs? (targets paired positionally with signatures for AUCell scoring)"
@@ -113,7 +114,7 @@ Ask the user for the following information:
 > **IMPORTANT**: The `--pathwaydb-gsea-only` flag must NEVER be added by default. Only include it when the user explicitly requests "PathwayDB only", "indication-centric GSEA", or specifically asks to skip target/signature analysis. The default workflow is target mode with `--signatures`.
 
 8. **Single-cell RNA-seq analysis** (default: YES):
-   - Ask user: "Include single-cell RNA-seq target analysis? Runs AUCell scoring across 8 scRNA-seq datasets (~2-4 hours). Skip with 'no-scrna'."
+   - Ask user: "Include single-cell RNA-seq target analysis? Runs AUCell scoring across 10 scRNA-seq datasets (~2-4 hours). Skip with 'no-scrna'."
    - Uses the SAME --targets and --signatures from above
    - **Important**: For sc analysis, targets and signatures are PAIRED positionally (1st target set with 1st signature, etc.)
    - When collecting targets/signatures in Step 1, ask: "How many target-signature sets?" then collect each pair iteratively
@@ -121,7 +122,7 @@ Ask the user for the following information:
    - Addon signatures (if any): `--addon-signatures "Name1:genes;Name2:genes"` (passed directly, not paired with targets)
    - Both `--signatures` and `--addon-signatures` are optional — at minimum only `--targets` is required
    - For bulk DEG (Step 3), flatten all target sets into one `--targets` comma-separated list
-   - Available studies: jhu, rieder, umcg_fibroblast, otar, tacolny, pf_lung, ssc_lung, hs_skin
+   - Available studies: jhu, rieder, umcg_fibroblast, otar, tacolny, pf_lung, ssc_lung, hs_skin, ibd_atlas, umcg_change
 
 ### Step 2: Verify Environment
 
@@ -360,12 +361,20 @@ conda run -n claude_test python scripts/deg_analysis.py \
 queries the DEG SOMA for significance annotations, then runs three modules per study:
 - **comparison**: Grouped boxplots of target gene expression with DEG significance asterisks
 - **gsva**: GSVA signature scoring with limma-based group comparison (adj.P.Val < 0.05)
-- **corr**: Gene-gene correlation heatmaps, target vs continuous metadata scatter plots
+- **corr**: Gene-gene correlation heatmaps, target vs continuous metadata scatter plots, GSVA vs continuous metadata scatter plots
 
 **Study behavior**:
 - Internal studies (Engitix_FFPE, SPARC, Varsity, Yokohama_RNA, Yokohama_Protein): ALWAYS run
 - Curated studies: ALWAYS run (when available)
 - Omicsoft studies: Ask user which studies to include
+
+**Yokohama fibrosis_score derivation**: Both Yokohama configs declare `"continuous_cols": ["fibrosis_score"]` so the correlation module runs target-vs-continuous and GSVA-vs-continuous against an ordinal numeric fibrosis stage:
+- `Yokohama_RNA` (`derive_yokohama_rna_fibrosis`): F0→0, F1→1, F2→2, F3→3, F4→4 (mapped from `metadata_stage`).
+- `Yokohama_Protein` (`derive_yokohama_prot_fibrosis`): Healthy→0, F0→0.5, F1→1, F2→2, F3→3, F4→4 (mapped from `metadata_Fibrosis`).
+
+The numeric `fibrosis_score` column is added alongside the categorical fibrosis label, enabling continuous correlation analysis without losing the grouped boxplot/GSVA group comparisons.
+
+**Continuous correlation plot annotations**: Target-vs-continuous and GSVA-vs-continuous scatter plots include a regression line with a 95% confidence interval band (computed via OLS standard error and Student's t critical value). Each panel's annotation reports both Spearman (`r`, `p`) and Pearson (`r`, `p`) statistics plus sample count `n`.
 
 **No disease/tissue/comparison filters are applied** — each study runs with its full sample set.
 Filters from Step 3 (DEG analysis) do NOT carry over.
@@ -432,29 +441,34 @@ Legacy R prerequisites (deprecated): conda r_env must have: R, ggplot2, dplyr, t
 
 **Runs by default** after Step 4 (sample-level analysis), unless the user declined in Step 1 (said "no single cell", "no-scrna", "skip sc", etc.).
 
-**What it does**: Processes 8 predefined scRNA-seq datasets from S3, performing:
-- AUCell signature enrichment scoring
+**What it does**: Processes 10 predefined scRNA-seq datasets from S3, performing:
+- AUCell signature enrichment scoring (paired target+signature sets and standalone addon signatures)
 - Embedding plots (UMAP or study-specific embeddings) colored by condition, cell type, gene expression, and signature scores
-- Dotplots per condition and cell type
-- Stacked violin plots for AUCell scores
+- Gene dotplots per condition column and cell type (rendered as static scanpy PNGs in PDF + `all_plots_interactive.html`, and as interactive Plotly dotplots in `dotplot_interactive.html`)
+- Signature score dotplots: X = signature names, Y = groups (condition or cell type), dot size = % cells with AUCell score > 0, color = mean AUCell score in active cells
+- Stacked violin plots for AUCell scores (per cluster and per condition column)
 - Correlation heatmaps (target gene and signature correlations, global and per-cell-type)
-- Population composition analysis (if xzsc installed)
-- Per-cell-type sub-analyses (dotplots, correlations)
+- Population composition analysis per condition column (if xzsc installed)
+- Per-cell-type sub-analyses (gene dotplots, signature score dotplots, correlations)
+
+**Multi-condition support**: For studies whose `condition_col` in `STUDY_CONFIGS` is a list (e.g., `ibd_atlas` uses `['condition', 'disease', 'comb_condition']`), every condition-grouped plot (UMAP coloring, dotplots, score dotplots, stacked violins, population composition) is repeated once per condition column. Studies may also declare `comb_condition_cols` (e.g., `['disease', 'condition']`) to auto-create a merged `comb_condition` column from multiple metadata fields before plotting.
 
 **Command**:
 ```bash
 conda run -n spatial python ~/.claude/skills/omicsoft-analysis/scripts/sc_target_analysis.py \
   --targets <targets_from_step1> \
-  --signatures <signatures_from_step1> \
+  [--signatures <signatures_from_step1>] \
+  [--addon-signatures <standalone_signatures>] \
   --output-dir <deg_output_dir>/sc_target_result \
-  [--studies jhu,rieder,umcg_fibroblast,otar,tacolny,pf_lung,ssc_lung,hs_skin] \
+  [--sc-studies jhu,rieder,umcg_fibroblast,otar,tacolny,pf_lung,ssc_lung,hs_skin,ibd_atlas,umcg_change] \
   [--max-workers 1] \
   [--temp-dir /mnt/sagemaker-nvme/tmp]
 ```
 
 **Parameter translation** from Step 1:
-- `--targets`: Target genes, semicolon-separated per set for paired matching: `"IL11,IL11RA;TNFRSF25,TNFSF15"`
-- `--signatures`: Signatures paired positionally with target sets: `"IL11_sig:IL13RA2,CEMIP;TL1A_sig:CHI3L1,MMP7"`
+- `--targets` (required): Target genes, semicolon-separated per set for paired matching: `"IL11,IL11RA;TNFRSF25,TNFSF15"`
+- `--signatures` (optional): Signatures paired positionally with target sets — paired set genes are unioned into the signature for AUCell scoring: `"IL11_sig:IL13RA2,CEMIP;TL1A_sig:CHI3L1,MMP7"`
+- `--addon-signatures` (optional): Standalone signatures scored independently — NOT merged with target genes. Format: `"Fibrosis:COL1A1,COL3A1,FN1;Inflammation:TNF,IL6"`
 - `--output-dir`: Nested inside the bulk DEG output directory as `sc_target_result/`
 
 **Target-signature pairing** (critical for AUCell scoring):
@@ -474,29 +488,37 @@ conda run -n spatial python ~/.claude/skills/omicsoft-analysis/scripts/sc_target
 | jhu | IBD | Patient-level scRNA-seq |
 | rieder | IBD | Uses MDE scANVI embedding (not UMAP) |
 | umcg_fibroblast | IBD | Stromal/fibroblast focus |
+| umcg_change | IBD | UMCG change cohort, single condition column |
+| ibd_atlas | IBD | Atlas integration; 3 condition columns (`condition`, `disease`, `comb_condition`); auto-creates `comb_condition` from `disease` + `condition` |
 | otar | MASH/NASH | Liver snuc-seq |
 | tacolny | MASH/NASH | Liver snuc-seq |
 | pf_lung | Pulmonary fibrosis | Multi-study lung atlas |
 | ssc_lung | Systemic sclerosis | Lung atlas integration |
 | hs_skin | Hidradenitis suppurativa | Skin atlas |
 
-**Output structure**:
+**Output structure** (5 files per study):
 ```
 {deg_output_dir}/sc_target_result/
 ├── jhu/
-│   ├── jhu_report.pdf
-│   ├── umap_interactive.html
-│   ├── heatmap_interactive.html
-│   └── all_plots_interactive.html
-├── rieder/
-│   └── ... (same structure, uses MDE embedding)
+│   ├── jhu_report.pdf                  # Static PDF report (all matplotlib figures)
+│   ├── all_plots_interactive.html      # Searchable index of all plots; dotplots are static scanpy PNGs (not Plotly)
+│   ├── dotplot_interactive.html        # Plotly dotplots only — gene dotplots + signature score dotplots, with cell-type dropdown filter and combobox keyboard navigation (ArrowUp/Down, Enter, Escape)
+│   ├── umap_interactive.html           # Plotly UMAP/embedding plots (per condition col, cell type, gene, signature score)
+│   └── heatmap_interactive.html        # Correlation heatmaps (global + per-cell-type)
+├── rieder/                              # (same structure, uses X_mde_scANVI_240923 embedding)
 ├── umcg_fibroblast/
+├── umcg_change/
+├── ibd_atlas/                           # condition-stratified plots repeated for each of 3 condition columns
 ├── otar/
 ├── tacolny/
 ├── pf_lung/
 ├── ssc_lung/
 └── hs_skin/
 ```
+
+**Interactive HTML output details**:
+- `dotplot_interactive.html`: All dotplots rendered as Plotly figures. Includes gene-expression dotplots (one trace set per signature × condition_col / cell_type) and signature-score dotplots (X=signatures, Y=groups, size=% cells active, color=mean AUCell score). Top-of-page combobox accepts free-text search; ArrowUp/Down navigates the dropdown, Enter selects, Escape closes.
+- `all_plots_interactive.html`: Single-page index of every figure produced (UMAPs, dotplots, score dotplots, violins, correlations, population composition). Dotplots here are embedded as static scanpy PNGs to keep the page light; use `dotplot_interactive.html` for the Plotly versions.
 
 **Error handling**:
 - Individual study failures print `[FAIL] study_name: error` but don't halt pipeline
@@ -509,6 +531,7 @@ conda run -n spatial python ~/.claude/skills/omicsoft-analysis/scripts/sc_target
 - Studies are processed sequentially by default (`--max-workers 1`) to avoid OOM
 - The `rieder` study uses `X_mde_scANVI_240923` embedding instead of standard UMAP
 - All other studies use `X_umap`
+- Multi-condition studies (`ibd_atlas`) produce more plots per study because every condition-grouped panel is repeated once per condition column
 
 ### Step 5: Interpret Results
 
@@ -548,15 +571,29 @@ The analysis generates multiple output files in the output directory (default: `
 5. **detailed_gene_table.csv** / **detailed_gene_table.json**: Comprehensive gene-level data export
    - Long-format table with all metadata for signature and target genes
    - Each row represents one gene in one comparison
-   - Contains all columns: log2fc, padj, tissue, disease, comparison, study, source, weight, etc.
-   - Weight column: internal=2.0, curated=1.5, omicsoft=1.0 (applied when source column exists)
+   - Contains all columns: log2fc, padj, tissue, disease, comparison, study, source, etc.
+   - Additional scoring columns (added by `compute_target_scores`):
+     - `scaled_score`: Percentile-scaled value [-1, 1] for that gene within its comparison×study
+     - `direction_weight`: +1 (Disease vs. Normal, NonResp vs Resp) or -1 (Resp vs NonResp)
+     - `source_weight`: 50 (internal), 20 (curated), 1 (omicsoft/GSE)
+     - `weighted_score`: scaled_score × direction_weight × source_weight
    - Useful for custom downstream analysis and filtering
    - JSON version provided for programmatic access
 
+5b. **target_score_table.csv**: Ranked target gene scoring table
+   - Scores genes by disease relevance using weighted percentile-scaled log2fc
+   - Only considers comparisons in: "Disease vs. Normal", "Non-Responder vs. Responder", "Responder vs. Non-Responder"
+   - Scoring pipeline: threshold gate (padj < 0.05) → rank-percentile scale within comparison×study → direction weight → source weight → aggregate
+   - Direction weights: Disease vs. Normal +1, NonResp vs Resp +1, Resp vs NonResp -1 (up in responders = protective → penalized)
+   - Source weights: internal 50×, curated 20×, omicsoft/GSE 1×
+   - Columns: Gene, total_score, n_comparisons, n_significant, disease_vs_normal_score, nonresp_vs_resp_score, resp_vs_nonresp_score
+   - Sorted by total_score descending (highest disease relevance first)
+   - Note: scoring filter does NOT affect any other output — only used for this table
+
 6. **internal_vs_external_summary.csv** / **internal_vs_external_summary.json**: Source-stratified summary
    - Per-gene statistics stratified by source (internal, curated, omicsoft)
-   - Columns: Gene, source, n_comparisons, n_significant, mean_log2fc, median_log2fc, weight
-   - Includes WEIGHTED_AGGREGATE rows with weighted mean log2fc across all sources
+   - Columns: Gene, source, n_comparisons, n_significant, mean_log2fc, median_log2fc
+   - Includes WEIGHTED_AGGREGATE rows with weighted mean log2fc (internal 50×, curated 20×, omicsoft 1×)
    - Useful for comparing internal study findings against external validation
 
 7. **gsea_all_results.csv** / **gsea_all_results.json**: Complete GSEA enrichment results (if --run-gsea used)

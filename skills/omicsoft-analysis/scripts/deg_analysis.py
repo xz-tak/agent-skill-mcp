@@ -830,6 +830,81 @@ def create_enhanced_gsea_summary(res_deg_score, signature_set, target_genes=None
     return summary_df
 
 
+def compute_target_scores(detailed_df, output_dir, padj_threshold=0.05):
+    """Score and rank target genes based on weighted percentile-scaled log2fc.
+
+    Only considers: Disease vs. Normal, Non-Responder vs. Responder, Responder vs. Non-Responder.
+    Does not modify or filter any other pipeline output.
+    """
+    SCORE_CATEGORIES = ["Disease vs. Normal", "Non-Responder vs. Responder", "Responder vs. Non-Responder"]
+    DIRECTION_WEIGHTS = {
+        "Disease vs. Normal": 1,
+        "Non-Responder vs. Responder": 1,
+        "Responder vs. Non-Responder": -1,
+    }
+    SOURCE_WEIGHTS = {"internal": 50.0, "curated": 20.0, "omicsoft": 1.0}
+
+    if 'comparison_category' not in detailed_df.columns:
+        print("  Target scoring: no comparison_category column, skipping.")
+        return detailed_df, None
+
+    score_df = detailed_df[detailed_df['comparison_category'].isin(SCORE_CATEGORIES)].copy()
+    if score_df.empty:
+        print("  Target scoring: no matching comparison categories, skipping.")
+        return detailed_df, None
+
+    score_df['log2fc_gated'] = np.where(
+        (score_df['padj'] < padj_threshold) & (score_df['log2fc'].abs() > 0),
+        score_df['log2fc'], 0.0
+    )
+
+    def percentile_scale(group):
+        vals = group['log2fc_gated']
+        scaled = pd.Series(0.0, index=vals.index)
+        pos_mask = vals > 0
+        neg_mask = vals < 0
+        if pos_mask.sum() > 0:
+            pos_ranks = vals[pos_mask].rank(method='average')
+            scaled[pos_mask] = pos_ranks / pos_ranks.max()
+        if neg_mask.sum() > 0:
+            neg_ranks = vals[neg_mask].abs().rank(method='average')
+            scaled[neg_mask] = -(neg_ranks / neg_ranks.max())
+        return scaled
+
+    score_df['scaled_score'] = score_df.groupby(
+        ['study', 'comparison'], group_keys=False
+    ).apply(percentile_scale).values
+
+    score_df['direction_weight'] = score_df['comparison_category'].astype(str).map(DIRECTION_WEIGHTS).fillna(0).astype(float)
+    source_col = score_df['source'].astype(str) if 'source' in score_df.columns else 'omicsoft'
+    score_df['source_weight'] = source_col.map(SOURCE_WEIGHTS).fillna(1.0) if isinstance(source_col, pd.Series) else 1.0
+    score_df['weighted_score'] = score_df['scaled_score'] * score_df['direction_weight'] * score_df['source_weight']
+
+    agg = score_df.groupby('Gene').agg(
+        total_score=('weighted_score', 'sum'),
+        n_comparisons=('weighted_score', 'count'),
+        n_significant=('log2fc_gated', lambda x: (x != 0).sum()),
+    ).reset_index()
+
+    for cat, short_name in [("Disease vs. Normal", "disease_vs_normal_score"),
+                            ("Non-Responder vs. Responder", "nonresp_vs_resp_score"),
+                            ("Responder vs. Non-Responder", "resp_vs_nonresp_score")]:
+        cat_scores = score_df[score_df['comparison_category'] == cat].groupby('Gene')['weighted_score'].sum()
+        agg[short_name] = agg['Gene'].map(cat_scores).fillna(0.0)
+
+    agg = agg.sort_values('total_score', ascending=False).reset_index(drop=True)
+    agg.to_csv(f'{output_dir}/target_score_table.csv', index=False)
+    print(f"Saved target score table to {output_dir}/target_score_table.csv ({len(agg)} genes)")
+
+    merge_cols = ['scaled_score', 'direction_weight', 'source_weight', 'weighted_score']
+    score_merge = score_df[['Gene', 'study', 'comparison'] + merge_cols]
+    enhanced = detailed_df.merge(score_merge, on=['Gene', 'study', 'comparison'], how='left')
+    for col in merge_cols:
+        enhanced[col] = enhanced[col].fillna(0.0)
+
+    return enhanced, agg
+
+
 def run_analysis(args):
     """Main analysis function"""
 
@@ -1257,13 +1332,8 @@ def run_analysis(args):
         print(f"\nExporting detailed long table for signature/target genes...")
         detailed_long_df = long_df_comp[long_df_comp['Gene'].isin(all_genes)].copy()
 
-        # Add source weight if source column exists
-        WEIGHT_MAP = {'internal': 10.0, 'curated': 2.0, 'omicsoft': 1.0}
-        if 'source' in detailed_long_df.columns:
-            detailed_long_df['weight'] = detailed_long_df['source'].astype(str).map(WEIGHT_MAP).fillna(1.0)
-        else:
+        if 'source' not in detailed_long_df.columns:
             detailed_long_df['source'] = 'unknown'
-            detailed_long_df['weight'] = 1.0
 
         detailed_long_df.to_csv(f'{output_dir}/detailed_gene_table.csv', index=False)
         export_json_file(detailed_long_df, f'{output_dir}/detailed_gene_table.json')
@@ -1271,8 +1341,16 @@ def run_analysis(args):
         print(f"  Shape: {detailed_long_df.shape} (rows x columns)")
         print(f"  Genes included: {detailed_long_df['Gene'].nunique()}")
 
+        # Target scoring
+        print(f"\nComputing target scores...")
+        detailed_long_df, score_table = compute_target_scores(
+            detailed_long_df, output_dir, padj_threshold=args.padj_threshold)
+        detailed_long_df.to_csv(f'{output_dir}/detailed_gene_table.csv', index=False)
+        export_json_file(detailed_long_df, f'{output_dir}/detailed_gene_table.json')
+
         # Generate internal_vs_external_summary.csv (stratified by source)
         print(f"\nGenerating internal vs external summary...")
+        SOURCE_WEIGHT_MAP = {'internal': 50.0, 'curated': 20.0, 'omicsoft': 1.0}
         try:
             source_summary_rows = []
             for (gene, source), grp in detailed_long_df.groupby(['Gene', 'source']):
@@ -1284,7 +1362,6 @@ def run_analysis(args):
                     'n_significant': sig_mask.sum(),
                     'mean_log2fc': grp['log2fc'].mean(),
                     'median_log2fc': grp['log2fc'].median(),
-                    'weight': WEIGHT_MAP.get(source, 1.0)
                 })
 
             source_summary_df = pd.DataFrame(source_summary_rows)
@@ -1292,7 +1369,7 @@ def run_analysis(args):
             # Add weighted aggregates section
             weighted_rows = []
             for gene, grp in detailed_long_df.groupby('Gene'):
-                w = grp['weight'].values
+                w = grp['source'].astype(str).map(SOURCE_WEIGHT_MAP).fillna(1.0).values
                 lfc = grp['log2fc'].values
                 sig_mask = grp['padj'] < args.padj_threshold
                 weighted_rows.append({
@@ -1302,7 +1379,6 @@ def run_analysis(args):
                     'n_significant': sig_mask.sum(),
                     'mean_log2fc': np.average(lfc, weights=w) if len(w) > 0 else np.nan,
                     'median_log2fc': grp['log2fc'].median(),
-                    'weight': np.nan
                 })
 
             weighted_df = pd.DataFrame(weighted_rows)
