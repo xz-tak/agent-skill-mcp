@@ -171,17 +171,16 @@ def extract_expr(uri, genes, studies=None, sources=None, diseases=None,
         result_df = obs_df.copy()
         result_df.index = range(len(result_df))
 
-        # Add gene expression values as columns
+        # Add gene expression values as columns (vectorized, no per-column insertion)
         from scipy import sparse
         X = adata.X
         if sparse.issparse(X):
             X = X.toarray()
 
-        # Map var indices to gene names
         query_var_df = var_df[gene_mask].reset_index(drop=True)
-        for i, gene_name in enumerate(query_var_df[gene_col].values):
-            if i < X.shape[1]:
-                result_df[gene_name] = X[:, i]
+        gene_names = query_var_df[gene_col].values[:X.shape[1]]
+        expr_df = pd.DataFrame(X[:, :len(gene_names)], columns=gene_names, index=result_df.index)
+        result_df = pd.concat([result_df, expr_df], axis=1)
 
         # Drop soma_joinid if present (internal ID)
         if 'soma_joinid' in result_df.columns:
