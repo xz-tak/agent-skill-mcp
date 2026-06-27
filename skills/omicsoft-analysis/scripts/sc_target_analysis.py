@@ -338,10 +338,18 @@ def run_aucell_scoring(adata, signature_dict):
         for k, v in signature_dict.items() if k != 'target'
     ])
 
-    if 'score_aucell' not in adata.obsm.keys():
-        dc.mt.aucell(data=adata, net=sig_df, verbose=True)
-        for c in adata.obsm["score_aucell"].columns:
-            adata.obs[c] = adata.obsm["score_aucell"][c].tolist()
+    # Always recompute (different combos have different signatures)
+    # Clean up previous AUCell artifacts first
+    if 'score_aucell' in adata.obsm.keys():
+        old_cols = list(adata.obsm["score_aucell"].columns)
+        del adata.obsm["score_aucell"]
+        for c in old_cols:
+            if c in adata.obs.columns:
+                del adata.obs[c]
+
+    dc.mt.aucell(data=adata, net=sig_df, verbose=True)
+    for c in adata.obsm["score_aucell"].columns:
+        adata.obs[c] = adata.obsm["score_aucell"][c].tolist()
 
     return adata
 
@@ -614,7 +622,7 @@ def save_plotly_html_with_dropdown(figures_dict, output_path, title):
 # PER-STUDY ANALYSIS PIPELINE
 # ============================================================
 
-def process_study(study_name, study_config, signature_dict, output_dir, temp_dir):
+def process_study(study_name, study_config, signature_dict, output_dir, temp_dir, adata=None):
     print(f"\n{'='*60}")
     print(f"PROCESSING: {study_name}")
     print(f"{'='*60}")
@@ -624,13 +632,17 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
     condition_cols = [condition_cols_raw] if isinstance(condition_cols_raw, str) else list(condition_cols_raw)
     sample_col = study_config['sample_col']
 
-    # 1. Download & Load
-    adata = download_and_load_adata(study_config['s3_path'], study_name, temp_dir)
+    # 1. Download & Load (or use pre-loaded adata)
+    if adata is None:
+        adata = download_and_load_adata(study_config['s3_path'], study_name, temp_dir)
+    else:
+        print(f"  [{study_name}] Using pre-loaded adata ({adata.n_obs} cells x {adata.n_vars} genes)")
 
-    # Create comb_condition if specified
+    # Create comb_condition if specified (idempotent)
     if 'comb_condition_cols' in study_config:
         cols = study_config['comb_condition_cols']
-        adata.obs['comb_condition'] = (adata.obs[cols[0]].astype(str) + '_' + adata.obs[cols[1]].astype(str)).astype('category')
+        if 'comb_condition' not in adata.obs.columns:
+            adata.obs['comb_condition'] = (adata.obs[cols[0]].astype(str) + '_' + adata.obs[cols[1]].astype(str)).astype('category')
 
     # 2. Resolve embedding
     embedding_key = resolve_embedding_key(adata, study_config, study_name)
