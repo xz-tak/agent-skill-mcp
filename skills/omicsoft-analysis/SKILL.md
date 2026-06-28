@@ -82,6 +82,25 @@ Ask the user for the following information:
    **When gathering requirements, use AskUserQuestion to ask:**
    - "Do you have target-signature pairs? (targets paired positionally with signatures for AUCell scoring)"
    - "Do you have additional standalone signatures? (scored independently, not merged with targets)"
+   - "Auto-generate functional signatures via Codex? (uses GPT-5.5 xhigh to create perturbation-based signatures for each target)"
+
+3c. **Auto-generated signatures** (when no signatures provided):
+   - If the user does NOT provide `--signatures` or `--addon-signatures`, ask:
+     "No target-paired signatures provided. Would you like to auto-generate functional signatures for each target using Codex GPT-5.5? These signatures contain 10-50 genes co-regulated with each target under perturbation (KO/KD/OE), prioritizing functional genomics evidence. [Y/n]"
+   - If yes: run the signature generator script:
+     ```bash
+     python ~/.claude/skills/omicsoft-analysis/scripts/generate_target_signatures.py \
+       --genes <comma-separated-targets> \
+       --output <output_dir>/signatures_auto.json \
+       --disease <disease_context> \
+       --tissue <tissue_context>
+     ```
+   - The generated `signatures_auto.json` is saved in the output directory for traceability
+   - Generated signatures are automatically converted to `--addon-signatures` format and passed to DEG analysis, per-sample (GSVA), and single-cell (AUCell) scripts
+   - Each target gets its own named signature (e.g., `TYK2_sig:STAT1,IRF1,ISG15,...`)
+   - For combos: each member gene's signature is scored independently (3-gene combo = 3 separate AUCell signatures + their correlation)
+   - The signature JSON includes rationale (confidence, evidence, pathway) for each gene — logged for scientific traceability
+   - **Direction logic**: Signature genes are those co-regulated with the target under perturbation — they go DOWN when target is KO/KD/inhibited, or UP when target is OE/activated. This ensures AUCell enrichment reflects target activity.
 
 4. **Optional filtering parameters** (all filters are optional and default to None):
    - `--diseases`: Comma-separated disease keywords (e.g., "scleroderma,sclerosis", "crohn,colitis,IBD"). Partial matches supported (case-insensitive)
