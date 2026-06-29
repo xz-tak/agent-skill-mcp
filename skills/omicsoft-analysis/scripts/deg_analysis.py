@@ -830,7 +830,7 @@ def create_enhanced_gsea_summary(res_deg_score, signature_set, target_genes=None
     return summary_df
 
 
-def compute_target_scores(detailed_df, output_dir, padj_threshold=0.05):
+def compute_target_scores(detailed_df, output_dir, padj_threshold=0.05, output_filename='target_score_table.csv'):
     """Score and rank target genes based on weighted percentile-scaled log2fc.
 
     Only considers: Disease vs. Normal, Non-Responder vs. Responder, Responder vs. Non-Responder.
@@ -893,8 +893,8 @@ def compute_target_scores(detailed_df, output_dir, padj_threshold=0.05):
         agg[short_name] = agg['Gene'].map(cat_scores).fillna(0.0)
 
     agg = agg.sort_values('total_score', ascending=False).reset_index(drop=True)
-    agg.to_csv(f'{output_dir}/target_score_table.csv', index=False)
-    print(f"Saved target score table to {output_dir}/target_score_table.csv ({len(agg)} genes)")
+    agg.to_csv(f'{output_dir}/{output_filename}', index=False)
+    print(f"Saved target score table to {output_dir}/{output_filename} ({len(agg)} genes)")
 
     merge_cols = ['scaled_score', 'direction_weight', 'source_weight', 'weighted_score']
     score_merge = score_df[['Gene', 'study', 'comparison'] + merge_cols]
@@ -1347,6 +1347,23 @@ def run_analysis(args):
             detailed_long_df, output_dir, padj_threshold=args.padj_threshold)
         detailed_long_df.to_csv(f'{output_dir}/detailed_gene_table.csv', index=False)
         export_json_file(detailed_long_df, f'{output_dir}/detailed_gene_table.json')
+
+        # Generate per-signature score tables (same format as target_score_table + associated_target)
+        if signature_set_for_gsea:
+            print(f"\nGenerating per-signature score tables...")
+            for sig_name, sig_genes in signature_set_for_gsea.items():
+                sig_detailed = detailed_long_df[detailed_long_df['Gene'].isin(sig_genes)].copy()
+                if sig_detailed.empty:
+                    print(f"  {sig_name}: no genes in detailed table, skipping")
+                    continue
+                sig_out_filename = f'{sig_name}_score_table.csv'
+                _, sig_score_table = compute_target_scores(
+                    sig_detailed, output_dir, padj_threshold=args.padj_threshold,
+                    output_filename=sig_out_filename)
+                if sig_score_table is not None and len(sig_score_table) > 0:
+                    sig_score_table = sig_score_table.assign(associated_target=sig_name.replace('_sig', ''))
+                    sig_score_table.to_csv(f'{output_dir}/{sig_out_filename}', index=False)
+                    print(f"  Saved {sig_out_filename} ({len(sig_score_table)} genes)")
 
         # Generate internal_vs_external_summary.csv (stratified by source)
         print(f"\nGenerating internal vs external summary...")
