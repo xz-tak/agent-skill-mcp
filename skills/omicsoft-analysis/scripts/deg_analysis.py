@@ -905,6 +905,77 @@ def compute_target_scores(detailed_df, output_dir, padj_threshold=0.05, output_f
     return enhanced, agg
 
 
+def compute_signature_scores(gsea_results_path, signature_set, output_dir, fdr_threshold=0.05, agonist_genes=None):
+    """Score signatures using GSEA NES with same strategy as compute_target_scores."""
+    SCORE_CATEGORIES = ["Disease vs. Normal", "Non-Responder vs. Responder", "Responder vs. Non-Responder"]
+    DIRECTION_WEIGHTS = {"Disease vs. Normal": 1, "Non-Responder vs. Responder": 1, "Responder vs. Non-Responder": -1}
+    SOURCE_WEIGHTS = {"internal": 50.0, "curated": 20.0, "omicsoft": 1.0}
+
+    gsea_df = pd.read_csv(gsea_results_path)
+    sig_names = set(signature_set.keys())
+
+    score_df = gsea_df[
+        (gsea_df['Term'].isin(sig_names)) &
+        (gsea_df['comparison_category'].isin(SCORE_CATEGORIES))
+    ].copy()
+
+    if score_df.empty:
+        return None
+
+    fdr_col = 'FDR q-val'
+    score_df['nes_gated'] = np.where(
+        score_df[fdr_col].astype(float) < fdr_threshold,
+        score_df['NES'].astype(float), 0.0
+    )
+
+    def percentile_scale(group):
+        vals = group['nes_gated']
+        scaled = pd.Series(0.0, index=vals.index)
+        pos_mask = vals > 0
+        neg_mask = vals < 0
+        if pos_mask.sum() > 0:
+            pos_ranks = vals[pos_mask].rank(method='average')
+            scaled[pos_mask] = pos_ranks / pos_ranks.max()
+        if neg_mask.sum() > 0:
+            neg_ranks = vals[neg_mask].abs().rank(method='average')
+            scaled[neg_mask] = -(neg_ranks / neg_ranks.max())
+        return scaled
+
+    score_df['scaled_score'] = score_df.groupby(
+        ['study', 'comparison'], group_keys=False
+    ).apply(percentile_scale, include_groups=False).values
+
+    score_df['direction_weight'] = score_df['comparison_category'].map(DIRECTION_WEIGHTS).fillna(0).astype(float)
+    source_col = score_df['source'].astype(str) if 'source' in score_df.columns else pd.Series('omicsoft', index=score_df.index)
+    score_df['source_weight'] = source_col.map(SOURCE_WEIGHTS).fillna(1.0)
+    score_df['weighted_score'] = score_df['scaled_score'] * score_df['direction_weight'] * score_df['source_weight']
+
+    agg = score_df.groupby('Term').agg(
+        total_score=('weighted_score', 'sum'),
+        n_comparisons=('weighted_score', 'count'),
+        n_significant=('nes_gated', lambda x: (x != 0).sum()),
+    ).reset_index().rename(columns={'Term': 'Signature'})
+
+    for cat, short_name in [("Disease vs. Normal", "disease_vs_normal_score"),
+                            ("Non-Responder vs. Responder", "nonresp_vs_resp_score"),
+                            ("Responder vs. Non-Responder", "resp_vs_nonresp_score")]:
+        cat_scores = score_df[score_df['comparison_category'] == cat].groupby('Term')['weighted_score'].sum()
+        agg[short_name] = agg['Signature'].map(cat_scores).fillna(0.0)
+
+    agg['associated_target'] = agg['Signature'].str.replace('_sig', '', regex=False)
+
+    agonist_set = set(agonist_genes) if agonist_genes else set()
+    agg['approach'] = agg['associated_target'].apply(
+        lambda g: 'agonist' if g in agonist_set else 'antagonist'
+    )
+
+    agg = agg.sort_values('total_score', ascending=False).reset_index(drop=True)
+    out_path = f'{output_dir}/signature_score_table.csv'
+    agg.to_csv(out_path, index=False)
+    print(f"Saved signature_score_table.csv ({len(agg)} signatures)")
+    return agg
+
+
 def run_analysis(args):
     """Main analysis function"""
 
@@ -1348,22 +1419,21 @@ def run_analysis(args):
         detailed_long_df.to_csv(f'{output_dir}/detailed_gene_table.csv', index=False)
         export_json_file(detailed_long_df, f'{output_dir}/detailed_gene_table.json')
 
-        # Generate per-signature score tables (same format as target_score_table + associated_target)
-        if signature_set_for_gsea:
-            print(f"\nGenerating per-signature score tables...")
-            for sig_name, sig_genes in signature_set_for_gsea.items():
-                sig_detailed = detailed_long_df[detailed_long_df['Gene'].isin(sig_genes)].copy()
-                if sig_detailed.empty:
-                    print(f"  {sig_name}: no genes in detailed table, skipping")
-                    continue
-                sig_out_filename = f'{sig_name}_score_table.csv'
-                _, sig_score_table = compute_target_scores(
-                    sig_detailed, output_dir, padj_threshold=args.padj_threshold,
-                    output_filename=sig_out_filename)
-                if sig_score_table is not None and len(sig_score_table) > 0:
-                    sig_score_table = sig_score_table.assign(associated_target=sig_name.replace('_sig', ''))
-                    sig_score_table.to_csv(f'{output_dir}/{sig_out_filename}', index=False)
-                    print(f"  Saved {sig_out_filename} ({len(sig_score_table)} genes)")
+        # Add approach column to target_score_table
+        if score_table is not None:
+            agonist_list = [g.strip() for g in args.agonist_genes.split(',') if g.strip()] if args.agonist_genes else []
+            agonist_set = set(agonist_list)
+            score_table['approach'] = score_table['Gene'].apply(
+                lambda g: 'agonist' if g in agonist_set else 'antagonist'
+            )
+            score_table.to_csv(f'{output_dir}/target_score_table.csv', index=False)
+
+        # Generate combined signature_score_table (GSEA NES-based)
+        gsea_path = f'{output_dir}/gsea_all_results.csv'
+        if signature_set_for_gsea and os.path.exists(gsea_path):
+            print(f"\nGenerating signature_score_table (GSEA-based)...")
+            agonist_list = [g.strip() for g in args.agonist_genes.split(',') if g.strip()] if args.agonist_genes else []
+            compute_signature_scores(gsea_path, signature_set_for_gsea, output_dir, fdr_threshold=args.padj_threshold, agonist_genes=agonist_list)
 
         # Generate internal_vs_external_summary.csv (stratified by source)
         print(f"\nGenerating internal vs external summary...")
@@ -1709,6 +1779,7 @@ def main():
     parser.add_argument('--pathwaydb-gsea-only', action='store_true', help='Run ONLY PathwayDB GSEA (indication-centric). Skips target/signature analysis, default MSigDB GSEA, and report generation.')
     parser.add_argument('--indication', default=None, help='Indication name for output directory naming (e.g., "IBD", "Fibrosis"). Used in output path: {target}_{indication}_omicsoft_YYYYMMDD/')
     parser.add_argument('--n-workers', type=int, default=24, help='Number of parallel workers for GSEA (default: 24)')
+    parser.add_argument('--agonist-genes', default='', help='Comma-separated list of agonist target genes (e.g., "GLP2R"). Default: empty (all antagonist)')
     parser.add_argument('--export-json', action='store_true', default=False,
                         help='Export JSON files alongside Parquet (default: False, Parquet only)')
 
