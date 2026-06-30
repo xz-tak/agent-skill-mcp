@@ -1,0 +1,1322 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title }}</title>
+    <style>
+      :root{
+        --paper: #f6f3ee;
+        --ink: #0c1323;
+        --muted: rgba(12,19,35,.70);
+        --faint: rgba(12,19,35,.52);
+        --stroke: rgba(12,19,35,.12);
+        --stroke2: rgba(12,19,35,.18);
+        --shadow: 0 18px 60px rgba(10,16,30,.10);
+        --shadow2: 0 8px 22px rgba(10,16,30,.10);
+
+        --nav: #E74C3C;
+        --nav2:#E74C3C;
+        --accent: #E74C3C;
+        --accent2:#1b998b;
+        --warn:#f2b705;
+
+        --radius: 18px;
+        --radius2: 12px;
+      }
+
+      *{ box-sizing:border-box; }
+      html,body{ height:100%; }
+      body{
+        margin:0;
+        color:var(--ink);
+        background:
+          radial-gradient(1200px 900px at 16% 8%, rgba(215,38,61,.10), transparent 55%),
+          radial-gradient(900px 700px at 84% 22%, rgba(27,153,139,.12), transparent 55%),
+          linear-gradient(180deg, #fff, var(--paper));
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+        font-size: 16px;
+        line-height:1.5;
+      }
+
+      .shell{
+        display:grid;
+        grid-template-columns: 252px 1fr;
+        min-height:100vh;
+      }
+
+      .nav{
+        position:sticky; top:0; height:100vh;
+        background: linear-gradient(180deg, var(--nav), var(--nav2));
+        color: rgba(255,255,255,.92);
+        padding: 22px 18px;
+        overflow:auto;
+        border-right: 1px solid rgba(255,255,255,.08);
+        font-size: 14px;
+      }
+
+      .brand{
+        padding: 14px 14px 12px 14px;
+        border: 1px solid rgba(255,255,255,.12);
+        border-radius: 16px;
+        background: rgba(255,255,255,.06);
+        box-shadow: 0 14px 30px rgba(0,0,0,.18);
+      }
+      .brand .kicker{
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .16em;
+        opacity:.75;
+      }
+      .brand .title{
+        margin-top: 8px;
+        font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+        font-weight: 750;
+        letter-spacing: .02em;
+        font-size: 20px;
+        line-height: 1.2;
+      }
+      .brand .meta{
+        margin-top:10px;
+        font-size:13px;
+        opacity:.75;
+      }
+
+      .nav h3{
+        margin: 18px 10px 8px;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: .14em;
+        opacity:.75;
+      }
+
+      .nav a{
+        display:flex;
+        align-items:center;
+        gap:10px;
+        padding: 10px 12px;
+        margin: 6px 6px;
+        border-radius: 12px;
+        color: rgba(255,255,255,.92);
+        text-decoration:none;
+        border: 1px solid transparent;
+        transition: background .18s ease, border-color .18s ease, transform .18s ease;
+      }
+      .nav a:hover{
+        background: rgba(255,255,255,.08);
+        border-color: rgba(255,255,255,.10);
+        transform: translateY(-1px);
+      }
+      .nav a .dot{
+        width: 8px; height: 8px; border-radius: 99px;
+        background: rgba(255,255,255,.32);
+        box-shadow: 0 0 0 3px rgba(255,255,255,.08);
+      }
+      .nav a[data-active="true"]{
+        background: rgba(255,255,255,.11);
+        border-color: rgba(255,255,255,.14);
+      }
+      .nav a[data-active="true"] .dot{
+        background: var(--accent);
+        box-shadow: 0 0 0 3px rgba(215,38,61,.18);
+      }
+
+      .main{
+        padding: 28px 22px 84px;
+        max-width: 1760px;
+      }
+
+      .page-header{
+        display:grid;
+        grid-template-columns: 1fr auto;
+        gap: 18px;
+        align-items:end;
+        margin-bottom: 22px;
+      }
+
+      h1{
+        margin:0;
+        font-family: ui-serif, "Iowan Old Style", "Palatino Linotype", Palatino, serif;
+        letter-spacing: .01em;
+        font-size: 44px;
+        line-height: 1.05;
+      }
+      .subtitle{
+        margin-top: 12px;
+        color: var(--muted);
+        max-width: 82ch;
+        font-size: 15px;
+      }
+
+      .stamp{
+        text-align:right;
+        padding: 14px 16px;
+        border: 1px solid var(--stroke);
+        border-radius: 16px;
+        background: rgba(255,255,255,.6);
+        box-shadow: var(--shadow2);
+        backdrop-filter: blur(6px);
+      }
+      .stamp .label{
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .14em;
+        color: var(--faint);
+      }
+      .stamp .value{
+        margin-top:8px;
+        font-weight: 750;
+      }
+
+      .card{
+        background: rgba(255,255,255,.78);
+        border: 1px solid var(--stroke);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 22px 22px 18px;
+        margin: 18px 0;
+        backdrop-filter: blur(8px);
+      }
+
+      .card h2{
+        margin:0 0 10px 0;
+        font-size: 24px;
+        letter-spacing: .01em;
+        color: #0b1b3a;
+      }
+
+      .deck{
+        display:grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .rank-table{
+        width:100%;
+        border-collapse: collapse;
+        overflow:hidden;
+        border-radius: 16px;
+        border: 1px solid var(--stroke);
+        background: rgba(255,255,255,.84);
+      }
+      .rank-table th, .rank-table td{
+        padding: 12px 12px;
+        border-bottom: 1px solid rgba(12,19,35,.10);
+        font-size: 13px;
+        vertical-align: middle;
+      }
+      .rank-table th{
+        background: linear-gradient(180deg, rgba(11,27,58,.96), rgba(10,23,50,.96));
+        color: rgba(255,255,255,.94);
+        text-transform: uppercase;
+        letter-spacing: .12em;
+        font-size: 11px;
+        border-bottom: 1px solid rgba(255,255,255,.12);
+        white-space: nowrap;
+      }
+      .rank-table tbody tr:hover{
+        background: rgba(27,153,139,.06);
+      }
+
+      /* Priority Rankings emphasis (bigger than other tables) */
+      #rankings .rank-table th, #rankings .rank-table td{
+        padding: 14px 14px;
+      }
+      #rankings .rank-table td{
+        font-size: 14px;
+      }
+      #rankings .rank-table th{
+        font-size: 12px;
+        letter-spacing: .13em;
+      }
+      #rankings .pill{
+        padding: 7px 12px;
+      }
+      #rankings .pill .k{
+        font-size: 12px;
+      }
+      #rankings .pill .score{
+        font-size: 14px;
+      }
+      #rankings .rank-table a{
+        font-size: 14px;
+      }
+
+      /* All score tables (rankings + per-gene breakdowns) */
+      .score-color-table th, .score-color-table td{
+        padding: 13px 14px;
+        font-size: 14px;
+      }
+      .score-color-table th{
+        font-size: 12px;
+        letter-spacing: .13em;
+      }
+      @media (max-width: 900px){
+        .score-color-table th, .score-color-table td{ padding: 12px 12px; font-size: 13px; }
+      }
+      .score-color-table td.scorecell{
+        font-variant-numeric: tabular-nums;
+        transition: background .18s ease, box-shadow .18s ease;
+        box-shadow: inset 0 0 0 1px rgba(12,19,35,.12);
+        background: rgba(255,255,255,.35);
+        border-radius: 12px;
+        background-clip: padding-box;
+      }
+
+      .pill{
+        display:inline-flex; align-items:center; gap:8px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--stroke);
+        background: rgba(255,255,255,.65);
+        font-weight: 650;
+      }
+      .pill .k{
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .10em;
+        color: var(--faint);
+        font-weight: 700;
+      }
+
+      .score{
+        font-variant-numeric: tabular-nums;
+        font-weight: 800;
+      }
+
+      .metric-grid{
+        display:grid;
+        grid-template-columns: repeat(5, minmax(140px, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+      }
+      @media (max-width: 1200px){
+        .shell{ grid-template-columns: 1fr; }
+        .nav{ position:relative; height:auto; }
+        .main{ padding: 18px 16px 70px; }
+        .metric-grid{ grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+      }
+      .metric{
+        border: 1px solid var(--stroke);
+        border-radius: 14px;
+        padding: 12px 12px;
+        background: rgba(255,255,255,.75);
+      }
+      .metric .label{
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .14em;
+        color: var(--faint);
+      }
+      .metric .val{
+        margin-top: 8px;
+        font-size: 22px;
+        font-weight: 850;
+        font-variant-numeric: tabular-nums;
+        display:inline-flex;
+        align-items: baseline;
+        justify-content: center;
+        min-width: 64px;
+        padding: 7px 10px;
+        border-radius: 14px;
+        background: rgba(255,255,255,.55);
+        box-shadow: inset 0 0 0 1px rgba(12,19,35,.10);
+      }
+
+      .tabs{
+        display:flex;
+        flex-wrap:wrap;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .tab{
+        border: 1px solid var(--stroke);
+        background: rgba(255,255,255,.65);
+        padding: 14px 18px;
+        border-radius: 999px;
+        cursor: pointer;
+        font-weight: 650;
+        font-size: 15px;
+        letter-spacing: .02em;
+        transition: transform .14s ease, background .14s ease, border-color .14s ease;
+      }
+      .tab:hover{ transform: translateY(-1px); border-color: var(--stroke2); }
+      .tab[aria-selected="true"]{
+        background: rgba(215,38,61,.10);
+        border-color: rgba(215,38,61,.24);
+      }
+
+      .bulk-control{
+        display:flex;
+        align-items:center;
+        gap: 10px;
+        margin: 8px 0 12px;
+      }
+      .bulk-control label{
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .14em;
+        color: var(--faint);
+      }
+      .bulkselect{
+        border: 1px solid var(--stroke);
+        background: rgba(255,255,255,.72);
+        padding: 10px 14px;
+        border-radius: 14px;
+        font-size: 14px;
+        font-weight: 650;
+        letter-spacing: .02em;
+        min-width: 220px;
+        box-shadow: inset 0 0 0 1px rgba(12,19,35,.06);
+      }
+
+      .panel{ display:none; margin-top: 14px; }
+      .panel.active{ display:block; }
+
+      .split{
+        display:grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      @media (max-width: 1000px){
+        .split{ grid-template-columns: 1fr; }
+      }
+
+      .pathway-wrap{
+        display:grid;
+        grid-template-columns: minmax(280px, 420px) 1fr;
+        gap: 16px;
+        align-items: start;
+      }
+      @media (max-width: 1000px){
+        .pathway-wrap{ grid-template-columns: 1fr; }
+      }
+      .pathway-img{
+        width: 100%;
+        height: auto;
+        max-height: 360px;
+        object-fit: contain;
+        display:block;
+      }
+
+      .note{
+        border-left: 4px solid rgba(11,27,58,.65);
+        background: rgba(11,27,58,.06);
+        padding: 12px 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(11,27,58,.14);
+        color: rgba(12,19,35,.86);
+      }
+      .note strong{ color: rgba(11,27,58,.96); }
+
+      .warn{
+        border-left: 4px solid rgba(242,183,5,.92);
+        background: rgba(242,183,5,.12);
+        border-color: rgba(242,183,5,.22);
+      }
+
+      .md{
+        color: rgba(12,19,35,.86);
+        font-size: 16px;
+      }
+      .md p{ margin: 10px 0; }
+      .md ul{ margin: 10px 0 10px 18px; padding:0; }
+      .md li{ margin: 6px 0; }
+      .md code{
+        padding: 2px 6px;
+        border: 1px solid var(--stroke);
+        border-radius: 8px;
+        background: rgba(255,255,255,.75);
+        font-size: 12px;
+      }
+      details{
+        margin-top: 10px;
+        border: 1px solid var(--stroke);
+        border-radius: 14px;
+        background: rgba(255,255,255,.65);
+        padding: 12px 12px;
+      }
+      summary{
+        cursor:pointer;
+        font-weight: 750;
+        letter-spacing: .01em;
+      }
+
+      .btn{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap:10px;
+        padding: 12px 16px;
+        border-radius: 999px;
+        border: 1px solid rgba(12,19,35,.18);
+        background: linear-gradient(180deg, rgba(11,27,58,.92), rgba(10,23,50,.92));
+        color: rgba(255,255,255,.94);
+        text-decoration:none;
+        font-weight: 800;
+        letter-spacing: .02em;
+        cursor: pointer;
+        box-shadow: 0 14px 28px rgba(10,16,30,.16);
+      }
+      .btn:hover{ transform: translateY(-1px); }
+      .btn:active{ transform: translateY(0px); }
+      .btn.secondary{
+        background: rgba(255,255,255,.72);
+        color: rgba(11,27,58,.95);
+      }
+      .dashframe{
+        width: 100%;
+        height: 860px;
+        border: 1px solid var(--stroke);
+        border-radius: 16px;
+        background: rgba(255,255,255,.92);
+        box-shadow: var(--shadow2);
+      }
+      @media (max-width: 1000px){
+        .dashframe{ height: 920px; }
+      }
+
+      .viz{
+        border: 1px solid var(--stroke);
+        border-radius: 16px;
+        overflow:hidden;
+        background: rgba(255,255,255,.9);
+        box-shadow: var(--shadow2);
+      }
+      .plot{
+        width: 100%;
+        height: 520px;
+        min-height: 520px;
+      }
+      .viz .cap{
+        display:flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: baseline;
+        padding: 12px 14px;
+        border-top: 1px solid rgba(12,19,35,.10);
+        background: rgba(255,255,255,.8);
+      }
+      .viz .cap .title{
+        font-weight: 750;
+        font-size: 14px;
+      }
+      .viz .cap a{
+        color: rgba(11,27,58,.92);
+        font-weight: 650;
+        text-decoration: none;
+        border-bottom: 1px solid rgba(11,27,58,.30);
+      }
+      .viz .cap a:hover{ border-bottom-color: rgba(215,38,61,.6); color: rgba(215,38,61,.92); }
+
+      .bar-plot{
+        display:flex;
+        flex-direction: column;
+        gap: 12px;
+        margin: 16px 0 8px;
+      }
+      .bar{
+        border: 1px solid var(--stroke);
+        border-radius: 14px;
+        background: rgba(255,255,255,.75);
+        overflow:hidden;
+      }
+      .bar .row{
+        display:grid;
+        grid-template-columns: 220px 1fr 160px;
+        gap: 12px;
+        padding: 12px 14px;
+        align-items:center;
+      }
+      @media (max-width: 900px){
+        .bar .row{ grid-template-columns: 1fr; gap: 8px; }
+      }
+      .bar .name{
+        font-weight: 800;
+        letter-spacing: .02em;
+        font-size: 14px;
+      }
+      .bar .meta{
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .bar .track{
+        height: 16px;
+        border-radius: 999px;
+        background: rgba(12,19,35,.10);
+        position: relative;
+        overflow:hidden;
+      }
+      .bar .fill{
+        height: 100%;
+        width: calc(var(--value) * 1%);
+        --h: calc(var(--value) * 1.2);
+        background: linear-gradient(90deg,
+          hsla(var(--h), 72%, 46%, .96),
+          hsla(calc(var(--h) + 12), 78%, 52%, .92)
+        );
+        border-radius: 999px;
+        box-shadow:
+          inset 0 0 0 1px rgba(255,255,255,.32),
+          0 6px 16px rgba(10,16,30,.14);
+      }
+
+      .chip{
+        display:inline-flex; align-items:center; gap:8px;
+        border: 1px solid var(--stroke);
+        background: rgba(255,255,255,.70);
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .chip .sub{
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .14em;
+        color: var(--faint);
+        font-weight: 800;
+      }
+      .chip.overall-chip{
+        padding: 8px 12px;
+        box-shadow: inset 0 0 0 1px rgba(12,19,35,.10), 0 10px 22px rgba(10,16,30,.10);
+      }
+
+      .img{
+        width:100%;
+        border-radius: 16px;
+        border: 1px solid var(--stroke);
+        box-shadow: var(--shadow2);
+        background: rgba(255,255,255,.9);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="nav">
+        <div class="brand">
+          <div class="kicker">Interactive Report</div>
+          <div class="title">{{ nav_title | default(title) }}</div>
+          <div class="meta">{{ generation_date }} · Built by {{ builders }}</div>
+        </div>
+
+        <h3>Overview</h3>
+          <a href="#executive" class="navlink"><span class="dot"></span>Executive Summary</a>
+          <a href="#rankings" class="navlink"><span class="dot"></span>Priority Rankings</a>
+          <a href="#methodology" class="navlink"><span class="dot"></span>Methodology</a>
+
+	        <h3>Combinations</h3>
+	        {% for combo in combos %}
+	          <a href="#{{ combo.anchor }}" class="navlink"><span class="dot"></span>{{ combo.name }}</a>
+	        {% endfor %}
+
+          <h3>Single Genes</h3>
+          <a href="#single-genes" class="navlink"><span class="dot"></span>Single-Gene Scores</a>
+          {% if gene_cards %}
+            {% for gene in gene_cards %}
+              <a href="#{{ gene.anchor }}" class="navlink"><span class="dot"></span>{{ gene.name }}</a>
+            {% endfor %}
+          {% endif %}
+          {% if ci_dashboard_available %}
+            <h3>Competitive Intel</h3>
+            <a href="#ci-dashboard" class="navlink"><span class="dot"></span>CI Dashboard</a>
+          {% endif %}
+	      </aside>
+
+      <main class="main">
+        <header class="page-header">
+          <div>
+            <h1>{{ title }}</h1>
+            <div class="subtitle">{{ subtitle }}</div>
+          </div>
+          <div class="stamp">
+            <div class="label">Build</div>
+            <div class="value">{{ build_id }}</div>
+            <div class="label" style="margin-top:10px;">Built by</div>
+            <div class="value">{{ builders }}</div>
+          </div>
+        </header>
+
+        <section id="executive" class="card">
+          <h2>Executive Summary</h2>
+          <div class="md">
+            {{ executive_html | safe }}
+          </div>
+        </section>
+
+        <section id="rankings" class="card">
+          <h2>Priority Rankings</h2>
+          <table class="rank-table score-color-table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Combination</th>
+                <th>Genes</th>
+                <th>Overall</th>
+                <th>Clinical</th>
+                <th>Biology</th>
+                <th>Druggability</th>
+                <th>Translation</th>
+                <th>Commercial</th>
+                <th>Safety</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in ranking_rows %}
+                <tr>
+                  <td><span class="pill"><span class="k">#</span><span class="score">{{ row.rank }}</span></span></td>
+                  <td><a href="#{{ row.anchor }}" style="color:inherit; text-decoration:none; border-bottom:1px solid rgba(12,19,35,.22); font-weight:800;">{{ row.name }}</a></td>
+                  <td style="color: rgba(12,19,35,.72)">{{ row.genes }}</td>
+                  <td class="score scorecell">{{ row.overall }}</td>
+                  <td class="scorecell">{{ row.clinical }}</td>
+                  <td class="scorecell">{{ row.disease }}</td>
+                  <td class="scorecell">{{ row.opportunity }}</td>
+                  <td class="scorecell">{{ row.novelty }}</td>
+                  <td class="scorecell">{{ row.commercial }}</td>
+                  <td class="scorecell">{{ row.safety }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div class="note warn" style="margin-top:14px;">
+            <strong>Legend:</strong> <span class="score">50.0*</span> in Safety indicates missing OFF‑X adverse event data (defaults to neutral 50.0).
+          </div>
+          <div class="viz" style="margin-top: 14px;">
+            <div class="plot" id="radar-plot"></div>
+            <div class="cap">
+              <div class="title">Score radar (subscores per combination)</div>
+              <span style="color: rgba(12,19,35,.58); font-size: 12px;">interactive</span>
+            </div>
+          </div>
+        </section>
+
+	        {% for combo in combos %}
+	          <section id="{{ combo.anchor }}" class="card">
+            <div style="display:flex; flex-wrap:wrap; gap: 10px; justify-content: space-between; align-items: baseline;">
+              <div>
+                <h2 style="margin-bottom:6px;">{{ combo.name }}</h2>
+                <div style="color: var(--muted); font-size: 13px;">{{ combo.long_genes }}</div>
+              </div>
+              <div class="chip overall-chip" data-score="{{ combo.scores.overall }}"><span class="sub">Overall</span><span class="score">{{ combo.scores.overall }}</span></div>
+            </div>
+
+            <div class="metric-grid">
+              <div class="metric"><div class="label">Clinical Validation</div><div class="val scorebadge" data-score="{{ combo.scores.clinical }}">{{ combo.scores.clinical }}</div></div>
+              <div class="metric"><div class="label">Biology</div><div class="val scorebadge" data-score="{{ combo.scores.disease }}">{{ combo.scores.disease }}</div></div>
+              <div class="metric"><div class="label">Druggability</div><div class="val scorebadge" data-score="{{ combo.scores.opportunity }}">{{ combo.scores.opportunity }}</div></div>
+              <div class="metric"><div class="label">Translation</div><div class="val scorebadge" data-score="{{ combo.scores.novelty }}">{{ combo.scores.novelty }}</div></div>
+              <div class="metric"><div class="label">Commercial</div><div class="val scorebadge" data-score="{{ combo.scores.commercial }}">{{ combo.scores.commercial }}</div></div>
+              <div class="metric"><div class="label">Safety</div><div class="val scorebadge" data-score="{{ combo.scores.safety }}">{{ combo.scores.safety }}</div></div>
+            </div>
+
+            <div class="tabs" role="tablist" aria-label="{{ combo.name }} tabs">
+              <button class="tab" data-tab="{{ combo.anchor }}-overview" aria-selected="true">Overview</button>
+              <button class="tab" data-tab="{{ combo.anchor }}-disease">Biology</button>
+              <button class="tab" data-tab="{{ combo.anchor }}-translation">Translation</button>
+              <button class="tab" data-tab="{{ combo.anchor }}-commercial">Commercial</button>
+              <button class="tab" data-tab="{{ combo.anchor }}-coexp">Bulk Coexpression</button>
+              <button class="tab" data-tab="{{ combo.anchor }}-singlecell">Single-Cell</button>
+              <button class="tab" data-tab="{{ combo.anchor }}-pathway">Pathways</button>
+              <button class="tab" data-tab="{{ combo.anchor }}-ppi">PPI</button>
+            </div>
+
+            <div id="{{ combo.anchor }}-overview" class="panel active">
+              <div class="split">
+                <div class="note">
+                  <strong>What this card answers:</strong> “If we pursued this combination, what is the evidence of disease relevance, tissue coexpression, mechanistic synergy, and risk?”
+                </div>
+                <div class="note warn">
+                  <strong>Interpretation sources:</strong> narrative blocks below are extracted from the corresponding Markdown reports under <code>results/</code>.
+                </div>
+              </div>
+              <div class="md">{{ combo.overview_html | safe }}</div>
+              <details open>
+                <summary>Element gene score table (same pipeline)</summary>
+                <table class="rank-table score-color-table" style="margin-top: 10px;">
+                  <thead>
+                    <tr>
+                      <th>Gene</th>
+                      <th>Overall</th>
+                      <th>Clinical</th>
+                      <th>Biology</th>
+                      <th>Druggability</th>
+                      <th>Translation</th>
+                      <th>Commercial</th>
+                      <th>Safety</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for g in combo.gene_rows %}
+                      <tr>
+                        <td style="font-weight: 850; letter-spacing: .02em;">{{ g.gene }}</td>
+                        <td class="scorecell">{{ g.overall }}</td>
+                        <td class="scorecell">{{ g.clinical }}</td>
+                        <td class="scorecell">{{ g.disease }}</td>
+                        <td class="scorecell">{{ g.opportunity }}</td>
+                        <td class="scorecell">{{ g.novelty }}</td>
+                        <td class="scorecell">{{ g.commercial }}</td>
+                        <td class="scorecell">{{ g.safety }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </details>
+            </div>
+
+            <div id="{{ combo.anchor }}-disease" class="panel">
+              <div class="chip"><span class="sub">Biology Subscore</span><span class="score">{{ combo.scores.disease }}</span></div>
+              <div class="bar-plot" aria-label="Biology component bars">
+                {% for comp in combo.disease_components %}
+                  <div class="bar" style="--value: {{ comp.value }};">
+                    <div class="row">
+                      <div>
+                        <div class="name">{{ comp.label }}</div>
+                        <div class="meta">weight {{ comp.weight }}</div>
+                      </div>
+                      <div class="track" aria-hidden="true"><div class="fill"></div></div>
+                      <div class="meta" style="text-align:right;"><span class="score">{{ comp.value }}</span> / 100</div>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+
+              <details open>
+                <summary>Element gene biology subscores</summary>
+                <table class="rank-table score-color-table" style="margin-top: 10px;">
+                  <thead>
+                    <tr>
+                      <th>Gene</th>
+                      <th>Biology</th>
+                      <th>DEG</th>
+                      <th>BioBridge</th>
+                      <th>ULTRA</th>
+                      <th>PrimeKG</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for g in combo.disease_gene_rows %}
+                      <tr>
+                        <td style="font-weight: 850; letter-spacing: .02em;">{{ g.gene }}</td>
+                        <td class="scorecell">{{ g.disease }}</td>
+                        <td class="scorecell">{{ g.deg }}</td>
+                        <td class="scorecell">{{ g.biobridge }}</td>
+                        <td class="scorecell">{{ g.ultra }}</td>
+                        <td class="scorecell">{{ g.primekg }}</td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </details>
+
+              <details open>
+                <summary>Interpretation (from DEG / BioBridge / PrimeKG markdown)</summary>
+                <div class="md">{{ combo.disease_interpretation_html | safe }}</div>
+              </details>
+            </div>
+
+            <div id="{{ combo.anchor }}-translation" class="panel">
+              <div class="chip"><span class="sub">Translation Score</span><span class="score">{{ combo.scores.novelty }}</span></div>
+              <div class="md">{{ combo.translation_html | safe }}</div>
+            </div>
+
+            <div id="{{ combo.anchor }}-commercial" class="panel">
+              <div class="chip"><span class="sub">Commercial Score</span><span class="score">{{ combo.scores.commercial }}</span></div>
+              <div class="md">{{ combo.commercial_html | safe }}</div>
+            </div>
+
+            <div id="{{ combo.anchor }}-coexp" class="panel">
+              <div class="viz">
+                <div class="plot" id="target-sig-{{ combo.anchor }}"></div>
+                <div class="cap">
+                  <div class="title">Target signature (DEG heatmap)</div>
+                  <span style="color: rgba(12,19,35,.58); font-size: 12px;">embedded</span>
+                </div>
+              </div>
+
+              <div class="viz" style="margin-top: 16px;">
+                <div class="plot" id="comparison-sig-{{ combo.anchor }}"></div>
+                <div class="cap">
+                  <div class="title">Comparison signature</div>
+                  <span style="color: rgba(12,19,35,.58); font-size: 12px;">embedded</span>
+                </div>
+              </div>
+
+              {% if combo.persample_plots %}
+                <div class="bulk-control" style="margin-top: 16px;">
+                  <label for="ps-select-{{ combo.anchor }}">Per-sample plot</label>
+                  <select id="ps-select-{{ combo.anchor }}" class="bulkselect" data-psselect="{{ combo.anchor }}">
+                    {% for p in combo.persample_plots %}
+                      <option value="{{ p.fig_key }}">{{ p.label }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="viz" style="margin-top: 10px;">
+                  <div class="plot" id="ps-plot-{{ combo.anchor }}" style="height: 680px;"></div>
+                  <div class="cap">
+                    <div class="title">Per-sample expression / GSVA</div>
+                    <span style="color: rgba(12,19,35,.58); font-size: 12px;">embedded</span>
+                  </div>
+                </div>
+              {% endif %}
+
+              {% if combo.archs4_plots %}
+                <div class="bulk-control" style="margin-top: 16px;">
+                  <label for="archs4-select-{{ combo.anchor }}">ARCHS4 tissue expression</label>
+                  <select id="archs4-select-{{ combo.anchor }}" class="bulkselect" data-archs4select="{{ combo.anchor }}">
+                    {% for p in combo.archs4_plots %}
+                      <option value="{{ p.fig_key }}">{{ p.label }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="viz" style="margin-top: 10px;">
+                  <div class="plot" id="archs4-plot-{{ combo.anchor }}" style="height: 580px;"></div>
+                  <div class="cap">
+                    <div class="title">ARCHS4 tissue expression</div>
+                    <span style="color: rgba(12,19,35,.58); font-size: 12px;">embedded</span>
+                  </div>
+                </div>
+              {% endif %}
+
+              <details open style="margin-top: 14px;">
+                <summary>Bulk interpretation</summary>
+                <div class="md">{{ combo.bulk_interpretation_html | safe }}</div>
+              </details>
+            </div>
+
+
+            <div id="{{ combo.anchor }}-pathway" class="panel">
+              <div class="pathway-wrap">
+                <div>
+                  {% if combo.pathway_png_path %}
+                    <div class="viz">
+                      <img class="pathway-img" src="{{ combo.pathway_png_path }}" alt="Pathway overlap UpSet plot: {{ combo.name }}" />
+                      <div class="cap">
+                        <div class="title">Shared vs distinguished pathway overlap (UpSet)</div>
+                        <span style="color: rgba(12,19,35,.58); font-size: 12px;">static</span>
+                      </div>
+                    </div>
+                  {% else %}
+                    <div class="note warn">No UpSet plot PNG found for this list under <code>results/pathwaydb</code>.</div>
+                  {% endif %}
+                </div>
+                <div>
+                  <details open style="margin-top: 0;">
+                    <summary>Shared vs distinguished pathway summary</summary>
+                    <div class="md">{{ combo.pathway_summary_html | safe }}</div>
+                  </details>
+                </div>
+              </div>
+            </div>
+
+            <div id="{{ combo.anchor }}-ppi" class="panel">
+              <div class="note">
+                <strong>PPI evidence:</strong> shortest paths and connector proteins extracted from the cross-database PPI analysis markdown.
+              </div>
+              <details open style="margin-top: 12px;">
+                <summary>PPI summary (from markdown)</summary>
+                <div class="md">{{ combo.ppi_html | safe }}</div>
+              </details>
+            </div>
+
+            <div id="{{ combo.anchor }}-singlecell" class="panel">
+              {% if combo.cellxgene_plots %}
+                <div class="bulk-control">
+                  <label for="cx-select-{{ combo.anchor }}">CellXGene cell type</label>
+                  <select id="cx-select-{{ combo.anchor }}" class="bulkselect" data-cxselect="{{ combo.anchor }}">
+                    {% for p in combo.cellxgene_plots %}
+                      <option value="{{ p.fig_key }}">{{ p.label }}</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="viz" style="margin-top: 10px;">
+                  <div class="plot" id="cx-plot-{{ combo.anchor }}" style="height: 580px;"></div>
+                  <div class="cap">
+                    <div class="title">CellXGene coexpression heatmap</div>
+                    <span style="color: rgba(12,19,35,.58); font-size: 12px;">embedded</span>
+                  </div>
+                </div>
+              {% else %}
+                <div class="note warn">No CellXGene single-cell coexpression data available for this combination.</div>
+              {% endif %}
+            </div>
+	          </section>
+	        {% endfor %}
+
+          <section id="single-genes" class="card">
+            <h2>Single-Gene Scores</h2>
+            <div class="note">
+              <strong>What this table is:</strong> single-gene scores computed by the same loader + scoring pipeline used for the combo rankings.
+            </div>
+            <table class="rank-table score-color-table" style="margin-top: 12px;">
+              <thead>
+                <tr>
+                  <th>Gene</th>
+                  <th>Overall</th>
+                  <th>Clinical</th>
+                  <th>Biology</th>
+                  <th>Druggability</th>
+                  <th>Translation</th>
+                  <th>Commercial</th>
+                  <th>Safety</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for g in gene_rows_all %}
+                  <tr>
+                    <td style="font-weight: 850; letter-spacing: .02em;">{{ g.gene }}</td>
+                    <td class="scorecell">{{ g.overall }}</td>
+                    <td class="scorecell">{{ g.clinical }}</td>
+                    <td class="scorecell">{{ g.disease }}</td>
+                    <td class="scorecell">{{ g.opportunity }}</td>
+                    <td class="scorecell">{{ g.novelty }}</td>
+                    <td class="scorecell">{{ g.commercial }}</td>
+                    <td class="scorecell">{{ g.safety }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </section>
+
+          {% if gene_cards %}
+            {% for gene in gene_cards %}
+              <section id="{{ gene.anchor }}" class="card">
+                <div style="display:flex; flex-wrap:wrap; gap: 10px; justify-content: space-between; align-items: baseline;">
+                  <div>
+                    <h2 style="margin-bottom:6px;">{{ gene.name }}</h2>
+                    <div style="color: var(--muted); font-size: 13px;">{{ gene.long_name }}</div>
+                  </div>
+                  <div class="chip overall-chip" data-score="{{ gene.scores.overall }}"><span class="sub">Overall</span><span class="score">{{ gene.scores.overall }}</span></div>
+                </div>
+
+                <div class="metric-grid">
+                  <div class="metric"><div class="label">Clinical Validation</div><div class="val scorebadge" data-score="{{ gene.scores.clinical }}">{{ gene.scores.clinical }}</div></div>
+                  <div class="metric"><div class="label">Biology</div><div class="val scorebadge" data-score="{{ gene.scores.disease }}">{{ gene.scores.disease }}</div></div>
+                  <div class="metric"><div class="label">Druggability</div><div class="val scorebadge" data-score="{{ gene.scores.opportunity }}">{{ gene.scores.opportunity }}</div></div>
+                  <div class="metric"><div class="label">Translation</div><div class="val scorebadge" data-score="{{ gene.scores.novelty }}">{{ gene.scores.novelty }}</div></div>
+                  <div class="metric"><div class="label">Commercial</div><div class="val scorebadge" data-score="{{ gene.scores.commercial }}">{{ gene.scores.commercial }}</div></div>
+                  <div class="metric"><div class="label">Safety</div><div class="val scorebadge" data-score="{{ gene.scores.safety }}">{{ gene.scores.safety }}</div></div>
+                </div>
+
+                <div style="margin-top: 16px;">
+                  <div class="note" style="margin-bottom: 12px;">
+                    <strong>Biology Components</strong>
+                  </div>
+                  <div class="bar-plot" aria-label="Gene biology component bars">
+                    {% for comp in gene.disease_components %}
+                      <div class="bar" style="--value: {{ comp.value }};">
+                        <div class="row">
+                          <div>
+                            <div class="name">{{ comp.label }}</div>
+                            <div class="meta">weight {{ comp.weight }}</div>
+                          </div>
+                          <div class="track" aria-hidden="true"><div class="fill"></div></div>
+                          <div class="meta" style="text-align:right;"><span class="score">{{ comp.value }}</span> / 100</div>
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
+                </div>
+
+                <div class="note" style="margin-top: 14px;">
+                  <strong>Summary</strong>
+                  <div class="md">{{ gene.overview_html | safe }}</div>
+                </div>
+
+                <details open>
+                  <summary>Disease interpretation (from DEG / BioBridge / PrimeKG markdown)</summary>
+                  <div class="md">{{ gene.disease_interpretation_html | safe }}</div>
+                </details>
+
+                <details open>
+                  <summary>Pathway summary</summary>
+                  <div class="md">{{ gene.pathway_html | safe }}</div>
+                </details>
+              </section>
+            {% endfor %}
+          {% endif %}
+
+          {% if ci_dashboard_available %}
+            <section id="ci-dashboard" class="card">
+              <h2>Competitive Intelligence Dashboard</h2>
+              <div class="note">
+                <strong>Embedded offline:</strong> this section inlines the prebuilt CI dashboard so the full report stays a single HTML file.
+              </div>
+              <div style="margin-top: 14px; display:flex; flex-wrap:wrap; gap: 10px; align-items:center;">
+                <button class="btn" id="ci-load">Open CI Dashboard</button>
+                <a class="btn secondary" href="#ci-dashboard" id="ci-jump" style="background: rgba(255,255,255,.72);">Jump to dashboard</a>
+              </div>
+              <div style="margin-top: 14px;">
+                <iframe class="dashframe" id="ci-frame" title="Competitive Intelligence dashboard" sandbox="allow-scripts allow-same-origin"></iframe>
+              </div>
+            </section>
+          {% endif %}
+
+          <section id="methodology" class="card">
+            <h2>Scoring Methodology & Strategy</h2>
+            <div class="note">
+              <strong>Purpose:</strong> document how each subscore is sourced, normalized to 0–100, and aggregated into combination scores.
+            </div>
+
+            <div class="tabs" role="tablist" aria-label="Methodology tabs">
+              <button class="tab" data-tab="method-overall" aria-selected="true">Overall</button>
+              <button class="tab" data-tab="method-clinical">Clinical</button>
+              <button class="tab" data-tab="method-disease">Biology</button>
+              <button class="tab" data-tab="method-opportunity">Druggability</button>
+              <button class="tab" data-tab="method-novelty">Translation</button>
+              <button class="tab" data-tab="method-commercial">Commercial</button>
+              <button class="tab" data-tab="method-safety">Safety</button>
+            </div>
+
+            <div id="method-overall" class="panel active">
+              <div class="md">{{ methodology.overall_html | safe }}</div>
+            </div>
+            <div id="method-clinical" class="panel">
+              <div class="md">{{ methodology.clinical_html | safe }}</div>
+            </div>
+            <div id="method-disease" class="panel">
+              <div class="md">{{ methodology.disease_html | safe }}</div>
+            </div>
+            <div id="method-opportunity" class="panel">
+              <div class="md">{{ methodology.opportunity_html | safe }}</div>
+            </div>
+            <div id="method-novelty" class="panel">
+              <div class="md">{{ methodology.novelty_html | safe }}</div>
+            </div>
+            <div id="method-commercial" class="panel">
+              <div class="md">{{ methodology.commercial_html | safe }}</div>
+            </div>
+            <div id="method-safety" class="panel">
+              <div class="md">{{ methodology.safety_html | safe }}</div>
+            </div>
+          </section>
+	      </main>
+	    </div>
+
+    <script>
+      {{ plotly_bundle_js | safe }}
+
+      const PLOT_FIGS = {{ plot_figs_js | safe }};
+      const PLOT_TARGETS = {{ plot_targets_json | safe }};
+
+      const __rendered = new Set();
+
+      function clearPlot(containerId){
+        const el = document.getElementById(containerId);
+        if (!el) return;
+        try { Plotly.purge(el); } catch (e) {}
+        el.innerHTML = '';
+        __rendered.delete(containerId);
+      }
+
+      function renderPlot(containerId, figKey, mode){
+        if (!figKey) { clearPlot(containerId); return; }
+        const fig = PLOT_FIGS[figKey];
+        if (!fig) { clearPlot(containerId); return; }
+        const el = document.getElementById(containerId);
+        if (!el) return;
+
+        const config = fig.config || {responsive: true};
+        if (mode === 'react' && __rendered.has(containerId)){
+          Plotly.react(el, fig.data, fig.layout, config);
+        } else {
+          Plotly.newPlot(el, fig.data, fig.layout, config);
+          __rendered.add(containerId);
+        }
+      }
+
+      function resizeRenderedPlots(panel){
+        if (!panel) return;
+        panel.querySelectorAll('.plot').forEach((node) => {
+          if (!node.id) return;
+          if (!__rendered.has(node.id)) return;
+          try { Plotly.Plots.resize(node); } catch (e) {}
+        });
+      }
+
+      function renderPersample(anchor, figKey){
+        renderPlot('ps-plot-' + anchor, figKey, 'react');
+      }
+
+      function hydrateBulkPlots(scope){
+        const anchor = scope.getAttribute('id');
+        if (!anchor) return;
+        const targets = PLOT_TARGETS[anchor];
+        if (!targets) return;
+        renderPlot('target-sig-' + anchor, targets.targetSignatureKey, 'new');
+        renderPlot('comparison-sig-' + anchor, targets.comparisonSignatureKey, 'new');
+
+        const psSelect = document.getElementById('ps-select-' + anchor);
+        if (psSelect && psSelect.value){
+          renderPersample(anchor, psSelect.value);
+        }
+
+        // ARCHS4
+        const archs4Select = document.getElementById('archs4-select-' + anchor);
+        if (archs4Select && archs4Select.value){
+          renderPlot('archs4-plot-' + anchor, archs4Select.value, 'new');
+        }
+      }
+
+
+      function initIframeSelectors(){
+        document.querySelectorAll('select[data-psselect]').forEach((sel) => {
+          const anchor = sel.dataset.psselect;
+          sel.addEventListener('change', () => renderPersample(anchor, sel.value));
+        });
+        document.querySelectorAll('select[data-archs4select]').forEach((sel) => {
+          const anchor = sel.dataset.archs4select;
+          sel.addEventListener('change', () => renderPlot('archs4-plot-' + anchor, sel.value, 'react'));
+        });
+        document.querySelectorAll('select[data-cxselect]').forEach((sel) => {
+          const anchor = sel.dataset.cxselect;
+          sel.addEventListener('change', () => renderPlot('cx-plot-' + anchor, sel.value, 'react'));
+        });
+      }
+
+      function setActiveNav(){
+        const links = Array.from(document.querySelectorAll('.navlink'));
+        const anchors = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+        let activeHref = null;
+        const top = 18;
+        for (const section of anchors){
+          const rect = section.getBoundingClientRect();
+          if (rect.top <= top && rect.bottom > top){
+            activeHref = '#' + section.id;
+            break;
+          }
+        }
+        for (const link of links){
+          link.dataset.active = (link.getAttribute('href') === activeHref) ? 'true' : 'false';
+        }
+      }
+
+      function initTabs(){
+        document.querySelectorAll('.tabs').forEach((tablist) => {
+          const tabs = Array.from(tablist.querySelectorAll('.tab:not(.celltab)'));
+          if (!tabs.length) return;
+          tabs.forEach((btn) => {
+            btn.addEventListener('click', () => {
+              const panelId = btn.dataset.tab;
+              const scope = btn.closest('.card');
+              if (!scope) return;
+              scope.querySelectorAll('.tab:not(.celltab)').forEach(t => t.setAttribute('aria-selected', 'false'));
+              btn.setAttribute('aria-selected', 'true');
+              scope.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+              const panel = scope.querySelector('#' + CSS.escape(panelId));
+              if (panel) panel.classList.add('active');
+
+              if (panelId.endsWith('-coexp')) {
+                hydrateBulkPlots(scope);
+                window.requestAnimationFrame(() => resizeRenderedPlots(panel));
+              }
+
+              if (panelId.endsWith('-singlecell')) {
+                const cxSelect = scope.querySelector('select[data-cxselect]');
+                if (cxSelect && cxSelect.value) {
+                  renderPlot('cx-plot-' + scope.getAttribute('id'), cxSelect.value, 'new');
+                }
+                window.requestAnimationFrame(() => resizeRenderedPlots(panel));
+              }
+
+            });
+          });
+        });
+      }
+
+      window.addEventListener('scroll', () => window.requestAnimationFrame(setActiveNav), { passive: true });
+      window.addEventListener('resize', () => {
+        window.requestAnimationFrame(setActiveNav);
+        const rankings = document.getElementById('rankings');
+        if (rankings) window.requestAnimationFrame(() => resizeRenderedPlots(rankings));
+      });
+      setActiveNav();
+      initTabs();
+      initIframeSelectors();
+
+      function colorizeTableByColumn(table){
+        const tbody = table.tBodies && table.tBodies[0];
+        if (!tbody) return;
+        const rows = Array.from(tbody.rows);
+        if (!rows.length) return;
+        const headers = table.tHead && table.tHead.rows && table.tHead.rows[0]
+          ? Array.from(table.tHead.rows[0].cells).map(c => (c.textContent || '').trim().toLowerCase())
+          : [];
+
+        const colCount = Math.max(...rows.map(r => r.cells.length));
+        for (let col = 0; col < colCount; col++){
+          const h = headers[col] || '';
+          if (h === 'rank' || h === 'combination' || h === 'genes' || h === 'gene') continue;
+
+          for (const r of rows){
+            const cell = r.cells[col];
+            if (!cell) continue;
+            const v = parseFloat((cell.textContent || '').trim());
+            if (!Number.isFinite(v)) continue;
+
+            const hue = scoreHue(v);
+            const sat = 88;
+            const lightTop = 86;
+            const lightBot = 74;
+            cell.classList.add('scorecell');
+            // Stronger, more visible heatmap fill for offline readability.
+            cell.style.background = `linear-gradient(180deg, hsla(${hue}, ${sat}%, ${lightTop}%, .92), hsla(${hue}, ${sat}%, ${lightBot}%, .78))`;
+            cell.style.boxShadow = 'inset 0 0 0 1px rgba(12,19,35,.14), 0 10px 18px rgba(10,16,30,.08)';
+            cell.style.borderRadius = '12px';
+            cell.style.backgroundClip = 'padding-box';
+          }
+        }
+      }
+
+      function colorizeAllScoreTables(){
+        document.querySelectorAll('table.score-color-table').forEach(colorizeTableByColumn);
+      }
+
+      function scoreHue(score){
+        let t = Math.max(0, Math.min(100, score)) / 100;
+        if (t <= 0.5) { const tt = t / 0.5; return 0 + (60 * tt); }
+        const tt = (t - 0.5) / 0.5;
+        return 60 + (60 * tt);
+      }
+
+      function colorizeScoreBadges(){
+        document.querySelectorAll('.scorebadge').forEach((el) => {
+          const raw = el.getAttribute('data-score') || (el.textContent || '');
+          const v = parseFloat(String(raw).trim());
+          if (!Number.isFinite(v)) return;
+          const hue = scoreHue(v);
+          el.style.background = `linear-gradient(180deg, hsla(${hue}, 88%, 86%, .95), hsla(${hue}, 88%, 74%, .82))`;
+          el.style.boxShadow = 'inset 0 0 0 1px rgba(12,19,35,.14), 0 10px 18px rgba(10,16,30,.08)';
+        });
+
+        document.querySelectorAll('.overall-chip').forEach((chip) => {
+          const raw = chip.getAttribute('data-score') || (chip.querySelector('.score')?.textContent || '');
+          const v = parseFloat(String(raw).trim());
+          if (!Number.isFinite(v)) return;
+          const hue = scoreHue(v);
+          chip.style.background = `linear-gradient(180deg, hsla(${hue}, 88%, 92%, .92), hsla(${hue}, 88%, 82%, .80))`;
+          chip.style.borderColor = 'rgba(12,19,35,.14)';
+        });
+      }
+
+      // Radar (after rankings table)
+      renderPlot('radar-plot', 'radar::rankings', 'new');
+      const rankings = document.getElementById('rankings');
+      if (rankings) window.requestAnimationFrame(() => resizeRenderedPlots(rankings));
+      colorizeAllScoreTables();
+      colorizeScoreBadges();
+
+      // CI Dashboard lazy-load
+      const ciBtn = document.getElementById('ci-load');
+      if (ciBtn) {
+        const CI_DASHBOARD_HTML = {{ ci_dashboard_html_escaped | safe }};
+        ciBtn.addEventListener('click', () => {
+          const frame = document.getElementById('ci-frame');
+          frame.srcdoc = CI_DASHBOARD_HTML;
+          frame.style.height = '860px';
+          ciBtn.textContent = 'Dashboard Loaded';
+          ciBtn.disabled = true;
+        });
+      }
+    </script>
+  </body>
+</html>
