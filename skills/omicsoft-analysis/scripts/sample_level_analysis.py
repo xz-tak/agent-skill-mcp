@@ -290,6 +290,11 @@ def _sorted_annotation_patterns(annotation_map):
     return sorted(annotation_map.items(), key=lambda x: len(x[0]), reverse=True)
 
 
+def _is_null_deg(log2fc, pval_or_padj):
+    """Return True if both log2fc and pval/padj are exactly 0, indicating a null/placeholder entry."""
+    return (log2fc == 0 and pval_or_padj == 0)
+
+
 def get_asterisk(pval):
     if pd.isna(pval):
         return ""
@@ -315,9 +320,12 @@ def build_sig_annotations(deg_df, expr_long, target_genes, group_levels,
     for _, row in deg_df.iterrows():
         gene = row.get("gene")
         padj_val = row.get("padj")
+        log2fc_val = row.get("log2fc", None)
         if pd.isna(padj_val) or padj_val >= sig_threshold:
             continue
         if gene not in target_genes:
+            continue
+        if pd.notna(log2fc_val) and _is_null_deg(log2fc_val, padj_val):
             continue
         asterisk = get_asterisk(padj_val)
         if not asterisk:
@@ -391,6 +399,9 @@ def build_yokohama_sig_annotations(deg_df, expr_long, target_genes, group_levels
                 continue
             padj_val = gene_deg["padj"].iloc[0]
             if pd.isna(padj_val) or padj_val >= sig_threshold:
+                continue
+            log2fc_val = gene_deg["log2fc"].iloc[0] if "log2fc" in gene_deg.columns else None
+            if pd.notna(log2fc_val) and _is_null_deg(log2fc_val, padj_val):
                 continue
             asterisk = get_asterisk(padj_val)
             if not asterisk:
@@ -467,14 +478,19 @@ def build_yokohama_gsva_annotations(gsva_stats, sig_names, group_levels, compari
 
         for sig in sig_names:
             best_padj = 1.0
+            best_logfc = None
             for stage in valid_stages:
                 match = gsva_stats[(gsva_stats["signature"] == sig) & (gsva_stats["group"] == stage)]
                 if not match.empty:
                     padj = match["adj.P.Val"].iloc[0]
+                    logfc = match["logFC"].iloc[0] if "logFC" in match.columns else None
                     if pd.notna(padj) and padj < best_padj:
                         best_padj = padj
+                        best_logfc = logfc
 
             if best_padj >= sig_threshold:
+                continue
+            if pd.notna(best_logfc) and _is_null_deg(best_logfc, best_padj):
                 continue
             asterisk = get_asterisk(best_padj)
             if not asterisk:
@@ -667,10 +683,14 @@ def _enrich_plotly_hover(fig, expr_plot, deg_df, group_col, annotation_map,
         if gene not in genes_in_plot:
             continue
         comp_id = str(row.get("comparison_id", ""))
+        log2fc_val = row.get("log2fc")
+        padj_val = row.get("padj")
+        if pd.notna(log2fc_val) and pd.notna(padj_val) and _is_null_deg(log2fc_val, padj_val):
+            continue
         stats = {
-            "log2fc": row.get("log2fc"),
+            "log2fc": log2fc_val,
             "pval": row.get("pval"),
-            "padj": row.get("padj"),
+            "padj": padj_val,
             "comparison_contrast": row.get("comparison_contrast", comp_id),
         }
         if annotation_map:
@@ -914,7 +934,11 @@ def plot_gsva_boxplots(gsva_long, group_col, group_levels, group_colors,
         offsets = {g: dodge_width * (i - (n_groups - 1) / 2) / n_groups
                    for i, g in enumerate(group_levels)}
         for _, row in gsva_stats.iterrows():
-            asterisk = get_asterisk(row.get("adj.P.Val", 1))
+            logfc_val = row.get("logFC")
+            padj_val = row.get("adj.P.Val", 1)
+            if pd.notna(logfc_val) and pd.notna(padj_val) and _is_null_deg(logfc_val, padj_val):
+                continue
+            asterisk = get_asterisk(padj_val)
             if not asterisk:
                 continue
             sig = row["signature"]
@@ -1035,7 +1059,11 @@ def plot_gsva_boxplots(gsva_long, group_col, group_levels, group_colors,
         plotly_offsets = {g: (i - (n_groups - 1) / 2) * group_width
                          for i, g in enumerate(group_levels)}
         for _, row in gsva_stats.iterrows():
-            asterisk = get_asterisk(row.get("adj.P.Val", 1))
+            logfc_val = row.get("logFC")
+            padj_val = row.get("adj.P.Val", 1)
+            if pd.notna(logfc_val) and pd.notna(padj_val) and _is_null_deg(logfc_val, padj_val):
+                continue
+            asterisk = get_asterisk(padj_val)
             if not asterisk:
                 continue
             sig = row["signature"]
