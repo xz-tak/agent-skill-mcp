@@ -1430,10 +1430,21 @@ def run_analysis(args):
 
         # Generate combined signature_score_table (GSEA NES-based)
         gsea_path = f'{output_dir}/gsea_all_results.csv'
-        if signature_set_for_gsea and os.path.exists(gsea_path):
-            print(f"\nGenerating signature_score_table (GSEA-based)...")
-            agonist_list = [g.strip() for g in args.agonist_genes.split(',') if g.strip()] if args.agonist_genes else []
-            compute_signature_scores(gsea_path, signature_set_for_gsea, output_dir, fdr_threshold=args.padj_threshold, agonist_genes=agonist_list)
+        if os.path.exists(gsea_path):
+            sig_set_for_scoring = signature_set_for_gsea
+            if not sig_set_for_scoring:
+                try:
+                    gsea_terms = pd.read_csv(gsea_path, usecols=['Term'])['Term'].unique()
+                    custom_terms = [t for t in gsea_terms if not t.startswith('MSigDB_Hallmark')]
+                    if custom_terms:
+                        sig_set_for_scoring = {t: [] for t in custom_terms}
+                        print(f"\nAuto-detected {len(custom_terms)} custom signature(s) from gsea_all_results.csv: {custom_terms}")
+                except Exception:
+                    pass
+            if sig_set_for_scoring:
+                print(f"\nGenerating signature_score_table (GSEA-based)...")
+                agonist_list = [g.strip() for g in args.agonist_genes.split(',') if g.strip()] if args.agonist_genes else []
+                compute_signature_scores(gsea_path, sig_set_for_scoring, output_dir, fdr_threshold=args.padj_threshold, agonist_genes=agonist_list)
 
         # Generate internal_vs_external_summary.csv (stratified by source)
         print(f"\nGenerating internal vs external summary...")
