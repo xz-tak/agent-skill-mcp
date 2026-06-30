@@ -948,7 +948,7 @@ SOMA support is optional - the skill works with h5ad files without tiledbsoma in
 **Schema exploration:**
 ```bash
 conda run -n <env_name> python scripts/explore_h5ad_schema.py \
-  --file s3://tec-rnd-sci-dev-gi2/gi2-xz/omicsoft/ibd_mash_fibro_derm_rheum_02262026/ibd_mash_fibro_derm_rheum_02262026_deg_soma \
+  --file s3://tec-rnd-sci-dev-gi2/gi2-xz/omicsoft/ibd_mash_fibro_derm_rheum_internal_05302026/ibd_mash_fibro_derm_rheum_internal_05302026_deg/ \
   --format json \
   --output soma_schema.json
 ```
@@ -956,7 +956,7 @@ conda run -n <env_name> python scripts/explore_h5ad_schema.py \
 **Filter validation:**
 ```bash
 conda run -n <env_name> python scripts/validate_filters.py \
-  --file s3://tec-rnd-sci-dev-gi2/gi2-xz/omicsoft/ibd_mash_fibro_derm_rheum_02262026/ibd_mash_fibro_derm_rheum_02262026_deg_soma \
+  --file s3://tec-rnd-sci-dev-gi2/gi2-xz/omicsoft/ibd_mash_fibro_derm_rheum_internal_05302026/ibd_mash_fibro_derm_rheum_internal_05302026_deg/ \
   --target-name IBD_Test \
   --signatures "Test:GREM1,IL11" \
   --diseases "crohn,colitis"
@@ -965,7 +965,7 @@ conda run -n <env_name> python scripts/validate_filters.py \
 **Full analysis:**
 ```bash
 conda run -n <env_name> python scripts/deg_analysis.py \
-  --file s3://tec-rnd-sci-dev-gi2/gi2-xz/omicsoft/ibd_mash_fibro_derm_rheum_02262026/ibd_mash_fibro_derm_rheum_02262026_deg_soma \
+  --file s3://tec-rnd-sci-dev-gi2/gi2-xz/omicsoft/ibd_mash_fibro_derm_rheum_internal_05302026/ibd_mash_fibro_derm_rheum_internal_05302026_deg/ \
   --target-name IBD_Targets \
   --signatures "Fibroblast:GREM1,IL11,COL1A1;TGFb:TGFB1,TGFB2,TGFB3" \
   --diseases "crohn,colitis,inflammatory" \

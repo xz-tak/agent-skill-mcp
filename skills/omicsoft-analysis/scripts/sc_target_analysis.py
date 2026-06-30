@@ -663,7 +663,7 @@ def process_study(study_name, study_config, signature_dict, output_dir, temp_dir
     all_targets = signature_dict['target']
     sig_names = [k for k in signature_dict if k != 'target']
     target_genes_in_data = [g for g in all_targets if g in adata.var_names]
-    sig_scores_in_data = [s for s in sig_names if s in adata.obs.columns] if not skip_aucell else []
+    sig_scores_in_data = [s for s in sig_names if s in adata.obs.columns]
 
     cell_types = adata.obs[cell_type_col].cat.categories.tolist() if hasattr(adata.obs[cell_type_col], 'cat') else sorted(adata.obs[cell_type_col].unique())
 
