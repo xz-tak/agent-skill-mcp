@@ -828,15 +828,7 @@
               <div class="viz">
                 <div class="plot" id="target-sig-{{ combo.anchor }}"></div>
                 <div class="cap">
-                  <div class="title">Target signature (DEG heatmap)</div>
-                  <span style="color: rgba(12,19,35,.58); font-size: 12px;">embedded</span>
-                </div>
-              </div>
-
-              <div class="viz" style="margin-top: 16px;">
-                <div class="plot" id="comparison-sig-{{ combo.anchor }}"></div>
-                <div class="cap">
-                  <div class="title">Comparison signature</div>
+                  <div class="title">Target Signature (DEG dot plot)</div>
                   <span style="color: rgba(12,19,35,.58); font-size: 12px;">embedded</span>
                 </div>
               </div>
@@ -1143,7 +1135,6 @@
         const targets = PLOT_TARGETS[anchor];
         if (!targets) return;
         renderPlot('target-sig-' + anchor, targets.targetSignatureKey, 'new');
-        renderPlot('comparison-sig-' + anchor, targets.comparisonSignatureKey, 'new');
 
         const psSelect = document.getElementById('ps-select-' + anchor);
         if (psSelect && psSelect.value){

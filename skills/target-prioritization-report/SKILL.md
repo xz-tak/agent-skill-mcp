@@ -21,7 +21,7 @@ This skill assumes a working directory `<WORKDIR>` with a `results/` tree contai
 
 **Default scoring (unless the user overrides):**
 - Overall weights (6 components):
-  - `Overall = 0.20·Clinical + 0.20·Biology + 0.10·Safety + 0.10·Druggability + 0.10·Translation + 0.10·Commercial`
+  - `Overall = 0.25·Clinical + 0.25·Biology + 0.125·Safety + 0.125·Druggability + 0.125·Translation + 0.125·Commercial`
 - Biology subweights:
   - `Biology = 0.20·DEG + 0.20·Signature + 0.12·BioBridge + 0.12·ULTRA + 0.06·PrimeKG + 0.15·GSP + 0.15·UKBPPP`
 - DEG (0.20): Mean target gene total_score from target_score_table.csv, agonist-negated, dynamic-max normalized across all combos.

@@ -472,8 +472,8 @@ def build_executive_summary(combo_scores, top_n=3):
     sorted_combos = sorted(combo_scores.items(), key=lambda kv: kv[1].get("overall", 0), reverse=True)
     top = sorted_combos[:top_n]
     html = (
-        "<p><strong>Scoring weights:</strong> Overall = 0.20·Clinical + 0.20·Biology "
-        "+ 0.10·Safety + 0.10·Druggability + 0.10·Translation(0.5×UKBPPP + 0.5×Sig) + 0.10·Commercial(0.4×Market + 0.4×Competitive + 0.2×Strategic)</p>\n"
+        "<p><strong>Scoring weights:</strong> Overall = 0.25·Clinical + 0.25·Biology "
+        "+ 0.125·Safety + 0.125·Druggability + 0.125·Translation + 0.125·Commercial</p>\n"
         f"<p><strong>Top {top_n} Combinations by Overall Score:</strong></p>\n<ol>\n"
     )
     for name, scores in top:
@@ -493,10 +493,9 @@ def build_executive_summary(combo_scores, top_n=3):
 def build_methodology_html():
     return {
         "overall_html": (
-            "<p><strong>Overall Score</strong> = 0.20·Clinical + 0.20·Biology + 0.10·Safety "
-            "+ 0.10·Druggability + 0.10·Translation + 0.10·Commercial</p>"
-            "<p>Scores are normalized by dividing by the sum of active weights (0.80) to "
-            "produce a 0–100 scale.</p>"
+            "<p><strong>Overall Score</strong> = 0.25·Clinical + 0.25·Biology + 0.125·Safety "
+            "+ 0.125·Druggability + 0.125·Translation + 0.125·Commercial</p>"
+            "<p>Weights sum to 1.0. Each component is scored 0–100.</p>"
             "<p><strong>Translation</strong> = 0.5×UKBPPP + 0.5×Combo Signature (agonist-corrected, "
             "dynamic-max normalized across all combos).</p>"
             "<p><strong>Combination scoring:</strong> combo scores use combo-level data where "
@@ -810,7 +809,7 @@ def generate_report(output_path=None):
         "gene_rows_all": gene_rows_all,
         "gene_cards": gene_cards_list,
         "ci_dashboard_available": ci_dashboard_html != "",
-        "ci_dashboard_html_escaped": json.dumps(ci_dashboard_html) if ci_dashboard_html else '""',
+        "ci_dashboard_html_escaped": json.dumps(ci_dashboard_html).replace("</script>", r"<\/script>") if ci_dashboard_html else '""',
         "methodology": build_methodology_html(),
         "plotly_bundle_js": plotly_bundle,
         "plot_figs_js": json.dumps(plot_figs),

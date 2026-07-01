@@ -48,7 +48,7 @@ function scoreHue(score){
 
 Default weighted sum (6 components):
 
-`Overall = 0.20·Clinical + 0.20·Biology + 0.10·Safety + 0.10·Druggability + 0.10·Translation + 0.10·Commercial`
+`Overall = 0.25·Clinical + 0.25·Biology + 0.125·Safety + 0.125·Druggability + 0.125·Translation + 0.125·Commercial`
 
 ## Clinical Validation (0–100)
 
